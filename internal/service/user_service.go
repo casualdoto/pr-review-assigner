@@ -7,11 +7,11 @@ import (
 
 // UserService предоставляет бизнес-логику для работы с пользователями
 type UserService struct {
-	userRepo *storage.UserRepository
+	userRepo storage.UserRepositoryInterface
 }
 
 // NewUserService создает новый экземпляр сервиса пользователей
-func NewUserService(userRepo *storage.UserRepository) *UserService {
+func NewUserService(userRepo storage.UserRepositoryInterface) *UserService {
 	return &UserService{
 		userRepo: userRepo,
 	}
@@ -38,4 +38,3 @@ func (s *UserService) SetUserIsActive(userID string, isActive bool) (*api.User, 
 
 	return user, nil
 }
-

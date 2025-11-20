@@ -10,6 +10,9 @@ RUN go mod download
 # Копируем исходный код
 COPY . .
 
+# Запускаем тесты
+RUN go test ./internal/service/... -v
+
 # Собираем приложение
 RUN CGO_ENABLED=0 GOOS=linux go build -o /app/server ./cmd/server
 

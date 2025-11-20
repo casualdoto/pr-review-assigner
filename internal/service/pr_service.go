@@ -10,13 +10,13 @@ import (
 
 // PRService предоставляет бизнес-логику для работы с Pull Request'ами
 type PRService struct {
-	prRepo   *storage.PRRepository
-	userRepo *storage.UserRepository
-	teamRepo *storage.TeamRepository
+	prRepo   storage.PRRepositoryInterface
+	userRepo storage.UserRepositoryInterface
+	teamRepo storage.TeamRepositoryInterface
 }
 
 // NewPRService создает новый экземпляр сервиса PR
-func NewPRService(prRepo *storage.PRRepository, userRepo *storage.UserRepository, teamRepo *storage.TeamRepository) *PRService {
+func NewPRService(prRepo storage.PRRepositoryInterface, userRepo storage.UserRepositoryInterface, teamRepo storage.TeamRepositoryInterface) *PRService {
 	return &PRService{
 		prRepo:   prRepo,
 		userRepo: userRepo,

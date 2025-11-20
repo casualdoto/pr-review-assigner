@@ -7,12 +7,12 @@ import (
 
 // TeamService предоставляет бизнес-логику для работы с командами
 type TeamService struct {
-	teamRepo *storage.TeamRepository
-	userRepo *storage.UserRepository
+	teamRepo storage.TeamRepositoryInterface
+	userRepo storage.UserRepositoryInterface
 }
 
 // NewTeamService создает новый экземпляр сервиса команд
-func NewTeamService(teamRepo *storage.TeamRepository, userRepo *storage.UserRepository) *TeamService {
+func NewTeamService(teamRepo storage.TeamRepositoryInterface, userRepo storage.UserRepositoryInterface) *TeamService {
 	return &TeamService{
 		teamRepo: teamRepo,
 		userRepo: userRepo,
@@ -71,4 +71,3 @@ func (s *TeamService) GetTeam(teamName string) (*api.Team, error) {
 	}
 	return team, nil
 }
-

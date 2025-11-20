@@ -80,4 +80,3 @@ func (r *TeamRepository) TeamExists(teamName string) (bool, error) {
 	}
 	return exists, nil
 }
-
