@@ -5,12 +5,12 @@ import (
 	"errors"
 	"fmt"
 
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 )
 
 var (
-	ErrNotFound      = errors.New("not found")
-	ErrDuplicateKey  = errors.New("duplicate key")
+	ErrNotFound            = errors.New("not found")
+	ErrDuplicateKey        = errors.New("duplicate key")
 	ErrForeignKeyViolation = errors.New("foreign key violation")
 )
 
@@ -29,31 +29,26 @@ func (r *Repository) DB() *sql.DB {
 	return r.db
 }
 
-// BeginTx начинает транзакцию
-func (r *Repository) BeginTx() (*sql.Tx, error) {
-	return r.db.Begin()
-}
-
 // HandleDBError обрабатывает ошибки БД и возвращает соответствующие ошибки приложения
 func HandleDBError(err error) error {
 	if err == nil {
 		return nil
 	}
-	
+
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
-	
-	// Проверка на duplicate key error
-	if err.Error() == "pq: duplicate key value violates unique constraint" {
-		return ErrDuplicateKey
+
+	// Проверка на ошибки PostgreSQL через тип pq.Error
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) {
+		switch pqErr.Code {
+		case "23505": // unique_violation
+			return ErrDuplicateKey
+		case "23503": // foreign_key_violation
+			return ErrForeignKeyViolation
+		}
 	}
-	
-	// Проверка на foreign key violation
-	if err.Error() == "pq: insert or update on table violates foreign key constraint" {
-		return ErrForeignKeyViolation
-	}
-	
+
 	return fmt.Errorf("database error: %w", err)
 }
-
