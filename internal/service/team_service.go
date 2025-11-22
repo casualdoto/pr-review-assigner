@@ -21,7 +21,7 @@ func NewTeamService(teamRepo storage.TeamRepositoryInterface, userRepo storage.U
 	}
 }
 
-// CreateOrUpdateTeam создает или обновляет команду с участниками
+// CreateOrUpdateTeam создает команду с участниками
 // Если команда уже существует, возвращает ErrTeamExists
 // Создает/обновляет всех пользователей из списка участников
 func (s *TeamService) CreateOrUpdateTeam(team *api.Team) (*api.Team, error) {
@@ -49,6 +49,33 @@ func (s *TeamService) CreateOrUpdateTeam(team *api.Team) (*api.Team, error) {
 	}
 
 	// Возвращаем созданную команду
+	return s.GetTeam(team.TeamName)
+}
+
+// UpdateTeam добавляет или обновляет участников существующей команды
+// Если команда не существует, возвращает ErrNotFound
+func (s *TeamService) UpdateTeam(team *api.Team) (*api.Team, error) {
+	// Проверяем существование команды
+	_, err := s.teamRepo.GetTeam(team.TeamName)
+	if err != nil {
+		return nil, MapStorageError(err)
+	}
+
+	// Создаем/обновляем всех участников команды
+	for _, member := range team.Members {
+		user := &api.User{
+			UserId:   member.UserId,
+			Username: member.Username,
+			TeamName: team.TeamName,
+			IsActive: member.IsActive,
+		}
+		err = s.userRepo.CreateOrUpdateUser(user)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Возвращаем обновленную команду
 	return s.GetTeam(team.TeamName)
 }
 

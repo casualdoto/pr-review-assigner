@@ -129,7 +129,7 @@ paths:
   /team/add:
     post:
       tags: [Teams]
-      summary: Создать команду с участниками (создаёт/обновляет пользователей)
+      summary: Создать новую команду с участниками
       requestBody:
         required: true
         content:
@@ -174,6 +174,51 @@ paths:
                 error:
                   code: TEAM_EXISTS
                   message: team_name already exists
+
+  /team/update:
+    post:
+      tags: [Teams]
+      summary: Добавить или обновить участников существующей команды
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Team'
+            example:
+              team_name: backend
+              members:
+                - user_id: u3
+                  username: Charlie
+                  is_active: true
+      responses:
+        '200':
+          description: Команда обновлена
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  team:
+                    $ref: '#/components/schemas/Team'
+              example:
+                team:
+                  team_name: backend
+                  members:
+                    - user_id: u1
+                      username: Alice
+                      is_active: true
+                    - user_id: u2
+                      username: Bob
+                      is_active: true
+                    - user_id: u3
+                      username: Charlie
+                      is_active: true
+        '404':
+          description: Команда не найдена
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   /team/get:
     get:
@@ -342,10 +387,10 @@ paths:
           application/json:
             schema:
               type: object
-              required: [ pull_request_id, old_user_id ]
+              required: [ pull_request_id, old_reviewer_id ]
               properties:
                 pull_request_id: { type: string }
-                old_user_id: { type: string }
+                old_reviewer_id: { type: string }
             example:
               pull_request_id: pr-1001
               old_reviewer_id: u2

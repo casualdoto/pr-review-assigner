@@ -112,7 +112,7 @@ type PostPullRequestMergeJSONBody struct {
 
 // PostPullRequestReassignJSONBody defines parameters for PostPullRequestReassign.
 type PostPullRequestReassignJSONBody struct {
-	OldUserId     string `json:"old_user_id"`
+	OldReviewerId string `json:"old_reviewer_id"`
 	PullRequestId string `json:"pull_request_id"`
 }
 
@@ -146,6 +146,9 @@ type PostPullRequestReassignJSONRequestBody PostPullRequestReassignJSONBody
 // PostTeamAddJSONRequestBody defines body for PostTeamAdd for application/json ContentType.
 type PostTeamAddJSONRequestBody = Team
 
+// PostTeamUpdateJSONRequestBody defines body for PostTeamUpdate for application/json ContentType.
+type PostTeamUpdateJSONRequestBody = Team
+
 // PostUsersSetIsActiveJSONRequestBody defines body for PostUsersSetIsActive for application/json ContentType.
 type PostUsersSetIsActiveJSONRequestBody PostUsersSetIsActiveJSONBody
 
@@ -160,12 +163,15 @@ type ServerInterface interface {
 	// Переназначить конкретного ревьювера на другого из его команды
 	// (POST /pullRequest/reassign)
 	PostPullRequestReassign(w http.ResponseWriter, r *http.Request)
-	// Создать команду с участниками (создаёт/обновляет пользователей)
+	// Создать новую команду с участниками
 	// (POST /team/add)
 	PostTeamAdd(w http.ResponseWriter, r *http.Request)
 	// Получить команду с участниками
 	// (GET /team/get)
 	GetTeamGet(w http.ResponseWriter, r *http.Request, params GetTeamGetParams)
+	// Добавить или обновить участников существующей команды
+	// (POST /team/update)
+	PostTeamUpdate(w http.ResponseWriter, r *http.Request)
 	// Получить PR'ы, где пользователь назначен ревьювером
 	// (GET /users/getReview)
 	GetUsersGetReview(w http.ResponseWriter, r *http.Request, params GetUsersGetReviewParams)
@@ -196,7 +202,7 @@ func (_ Unimplemented) PostPullRequestReassign(w http.ResponseWriter, r *http.Re
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// Создать команду с участниками (создаёт/обновляет пользователей)
+// Создать новую команду с участниками
 // (POST /team/add)
 func (_ Unimplemented) PostTeamAdd(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -205,6 +211,12 @@ func (_ Unimplemented) PostTeamAdd(w http.ResponseWriter, r *http.Request) {
 // Получить команду с участниками
 // (GET /team/get)
 func (_ Unimplemented) GetTeamGet(w http.ResponseWriter, r *http.Request, params GetTeamGetParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Добавить или обновить участников существующей команды
+// (POST /team/update)
+func (_ Unimplemented) PostTeamUpdate(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -310,6 +322,20 @@ func (siw *ServerInterfaceWrapper) GetTeamGet(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetTeamGet(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostTeamUpdate operation middleware
+func (siw *ServerInterfaceWrapper) PostTeamUpdate(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostTeamUpdate(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -494,6 +520,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/team/get", wrapper.GetTeamGet)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/team/update", wrapper.PostTeamUpdate)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/users/getReview", wrapper.GetUsersGetReview)

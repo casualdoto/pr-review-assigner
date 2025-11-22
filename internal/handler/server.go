@@ -101,6 +101,28 @@ func (s *Server) PostTeamAdd(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusCreated, response)
 }
 
+// PostTeamUpdate добавляет или обновляет участников существующей команды
+// (POST /team/update)
+func (s *Server) PostTeamUpdate(w http.ResponseWriter, r *http.Request) {
+	var team api.Team
+	if !s.decodeJSON(w, r, &team) {
+		return
+	}
+
+	result, err := s.teamService.UpdateTeam(&team)
+	if err != nil {
+		s.handleServiceError(w, err)
+		return
+	}
+
+	response := struct {
+		Team *api.Team `json:"team"`
+	}{
+		Team: result,
+	}
+	s.writeJSON(w, http.StatusOK, response)
+}
+
 // GetTeamGet получает команду с участниками
 // (GET /team/get)
 func (s *Server) GetTeamGet(w http.ResponseWriter, r *http.Request, params api.GetTeamGetParams) {
@@ -187,7 +209,7 @@ func (s *Server) PostPullRequestReassign(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	pr, newUserID, err := s.prService.ReassignReviewer(req.PullRequestId, req.OldUserId)
+	pr, newUserID, err := s.prService.ReassignReviewer(req.PullRequestId, req.OldReviewerId)
 	if err != nil {
 		s.handleServiceError(w, err)
 		return
