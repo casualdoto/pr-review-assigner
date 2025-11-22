@@ -34,3 +34,10 @@ TODO.md
 .DS_Store
 *.log
 
+# Test files
+test.exe
+*.test
+
+# Cursor
+.cursor/
+
