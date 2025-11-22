@@ -18,6 +18,7 @@ import (
 	"pr-review-assigner/internal/storage"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/cors"
 	_ "github.com/lib/pq"
 )
 
@@ -53,8 +54,24 @@ func main() {
 
 	// Настройка HTTP сервера
 	router := chi.NewRouter()
+
+	// CORS middleware для Swagger UI
+	router.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   []string{"http://localhost:8081"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Content-Type", "Authorization"},
+		ExposedHeaders:   []string{"Link"},
+		AllowCredentials: true,
+		MaxAge:           300,
+	}))
+
 	apiHandler := api.Handler(server)
 	router.Mount("/", apiHandler)
+
+	// Статическая отдача OpenAPI спецификации для Swagger UI
+	router.Get("/openapi.yml", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "./docs/openapi.yml")
+	})
 
 	httpServer := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.ServerPort),

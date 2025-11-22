@@ -27,6 +27,8 @@ WORKDIR /root/
 COPY --from=builder /app/server .
 # Копируем миграции
 COPY --from=builder /app/migrations ./migrations
+# Копируем OpenAPI спецификацию
+COPY --from=builder /app/docs ./docs
 
 EXPOSE 8080
 

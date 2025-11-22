@@ -3,6 +3,10 @@ info:
   title: PR Reviewer Assignment Service (Test Task, Fall 2025)
   version: "1.0.0"
 
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
 tags:
   - name: Teams
   - name: Users
