@@ -49,9 +49,12 @@ func (m *MockUserRepository) GetUser(userID string) (*api.User, error) {
 	return args.Get(0).(*api.User), args.Error(1)
 }
 
-func (m *MockUserRepository) UpdateUserIsActive(userID string, isActive bool) error {
+func (m *MockUserRepository) UpdateUserIsActive(userID string, isActive bool) (*api.User, error) {
 	args := m.Called(userID, isActive)
-	return args.Error(0)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*api.User), args.Error(1)
 }
 
 func (m *MockUserRepository) GetActiveUsersByTeam(teamName string, excludeUserID string) ([]api.User, error) {
@@ -67,9 +70,12 @@ type MockPRRepository struct {
 	mock.Mock
 }
 
-func (m *MockPRRepository) CreatePR(pr *api.PullRequest) error {
+func (m *MockPRRepository) CreatePR(pr *api.PullRequest) (*api.PullRequest, error) {
 	args := m.Called(pr)
-	return args.Error(0)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*api.PullRequest), args.Error(1)
 }
 
 func (m *MockPRRepository) GetPR(prID string) (*api.PullRequest, error) {
@@ -80,9 +86,12 @@ func (m *MockPRRepository) GetPR(prID string) (*api.PullRequest, error) {
 	return args.Get(0).(*api.PullRequest), args.Error(1)
 }
 
-func (m *MockPRRepository) UpdatePRStatus(prID string, status api.PullRequestStatus, mergedAt *time.Time) error {
+func (m *MockPRRepository) UpdatePRStatus(prID string, status api.PullRequestStatus, mergedAt *time.Time) (*api.PullRequest, error) {
 	args := m.Called(prID, status, mergedAt)
-	return args.Error(0)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*api.PullRequest), args.Error(1)
 }
 
 func (m *MockPRRepository) GetPRsByReviewer(userID string) ([]api.PullRequestShort, error) {
@@ -93,20 +102,10 @@ func (m *MockPRRepository) GetPRsByReviewer(userID string) ([]api.PullRequestSho
 	return args.Get(0).([]api.PullRequestShort), args.Error(1)
 }
 
-func (m *MockPRRepository) AssignReviewers(prID string, reviewerIDs []string) error {
-	args := m.Called(prID, reviewerIDs)
-	return args.Error(0)
-}
-
-func (m *MockPRRepository) ReassignReviewer(prID string, oldUserID, newUserID string) error {
+func (m *MockPRRepository) ReassignReviewer(prID string, oldUserID, newUserID string) (*api.PullRequest, error) {
 	args := m.Called(prID, oldUserID, newUserID)
-	return args.Error(0)
-}
-
-func (m *MockPRRepository) GetReviewersByPR(prID string) ([]string, error) {
-	args := m.Called(prID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).([]string), args.Error(1)
+	return args.Get(0).(*api.PullRequest), args.Error(1)
 }

@@ -1,11 +1,17 @@
 package service
 
 import (
+	"errors"
 	"math/rand"
 	"time"
 
 	"pr-review-assigner/internal/api"
 	"pr-review-assigner/internal/storage"
+)
+
+const (
+	// MaxReviewers максимальное количество ревьюверов на PR
+	MaxReviewers = 2
 )
 
 // PRService предоставляет бизнес-логику для работы с Pull Request'ами
@@ -24,15 +30,12 @@ func NewPRService(prRepo storage.PRRepositoryInterface, userRepo storage.UserRep
 	}
 }
 
-// CreatePR создает новый PR и автоматически назначает до 2 активных ревьюверов из команды автора
+// CreatePR создает новый PR и автоматически назначает до MaxReviewers активных ревьюверов из команды автора
 func (s *PRService) CreatePR(prID, prName, authorID string) (*api.PullRequest, error) {
 	// Проверяем существование автора
 	author, err := s.userRepo.GetUser(authorID)
 	if err != nil {
-		if err == storage.ErrNotFound {
-			return nil, ErrNotFound
-		}
-		return nil, err
+		return nil, MapStorageError(err)
 	}
 
 	// Проверяем, что PR еще не существует (попытка создать существующий PR)
@@ -40,8 +43,8 @@ func (s *PRService) CreatePR(prID, prName, authorID string) (*api.PullRequest, e
 	if err == nil && existingPR != nil {
 		return nil, ErrPRExists
 	}
-	if err != nil && err != storage.ErrNotFound {
-		return nil, err
+	if err != nil && !errors.Is(err, storage.ErrNotFound) {
+		return nil, MapStorageError(err)
 	}
 
 	// Получаем активных пользователей команды автора (исключая самого автора)
@@ -50,8 +53,8 @@ func (s *PRService) CreatePR(prID, prName, authorID string) (*api.PullRequest, e
 		return nil, err
 	}
 
-	// Выбираем случайных ревьюверов (до 2), исключая автора
-	reviewerIDs := s.selectRandomReviewers(candidates, 2, authorID)
+	// Выбираем случайных ревьюверов (до MaxReviewers)
+	reviewerIDs := s.selectRandomReviewers(candidates, MaxReviewers)
 
 	// Создаем PR
 	now := time.Now()
@@ -64,16 +67,15 @@ func (s *PRService) CreatePR(prID, prName, authorID string) (*api.PullRequest, e
 		CreatedAt:         &now,
 	}
 
-	err = s.prRepo.CreatePR(pr)
+	createdPR, err := s.prRepo.CreatePR(pr)
 	if err != nil {
-		if err == storage.ErrDuplicateKey {
+		if errors.Is(err, storage.ErrDuplicateKey) {
 			return nil, ErrPRExists
 		}
-		return nil, err
+		return nil, MapStorageError(err)
 	}
 
-	// Возвращаем созданный PR
-	return s.prRepo.GetPR(prID)
+	return createdPR, nil
 }
 
 // MergePR помечает PR как MERGED (идемпотентная операция)
@@ -81,10 +83,7 @@ func (s *PRService) MergePR(prID string) (*api.PullRequest, error) {
 	// Получаем PR
 	pr, err := s.prRepo.GetPR(prID)
 	if err != nil {
-		if err == storage.ErrNotFound {
-			return nil, ErrNotFound
-		}
-		return nil, err
+		return nil, MapStorageError(err)
 	}
 
 	// Если PR уже MERGED, возвращаем его
@@ -94,13 +93,12 @@ func (s *PRService) MergePR(prID string) (*api.PullRequest, error) {
 
 	// Обновляем статус на MERGED
 	now := time.Now()
-	err = s.prRepo.UpdatePRStatus(prID, api.PullRequestStatusMERGED, &now)
+	updatedPR, err := s.prRepo.UpdatePRStatus(prID, api.PullRequestStatusMERGED, &now)
 	if err != nil {
-		return nil, err
+		return nil, MapStorageError(err)
 	}
 
-	// Возвращаем обновленный PR
-	return s.prRepo.GetPR(prID)
+	return updatedPR, nil
 }
 
 // ReassignReviewer переназначает одного ревьювера на другого из команды заменяемого ревьювера
@@ -109,10 +107,7 @@ func (s *PRService) ReassignReviewer(prID, oldUserID string) (*api.PullRequest, 
 	// Получаем PR
 	pr, err := s.prRepo.GetPR(prID)
 	if err != nil {
-		if err == storage.ErrNotFound {
-			return nil, "", ErrNotFound
-		}
-		return nil, "", err
+		return nil, "", MapStorageError(err)
 	}
 
 	// Проверяем, что PR не MERGED
@@ -135,10 +130,7 @@ func (s *PRService) ReassignReviewer(prID, oldUserID string) (*api.PullRequest, 
 	// Получаем информацию о заменяемом ревьювере
 	oldReviewer, err := s.userRepo.GetUser(oldUserID)
 	if err != nil {
-		if err == storage.ErrNotFound {
-			return nil, "", ErrNotFound
-		}
-		return nil, "", err
+		return nil, "", MapStorageError(err)
 	}
 
 	// Получаем активных пользователей команды заменяемого ревьювера (исключая его самого и уже назначенных ревьюверов)
@@ -165,26 +157,20 @@ func (s *PRService) ReassignReviewer(prID, oldUserID string) (*api.PullRequest, 
 		return nil, "", ErrNoCandidate
 	}
 
-	// Выбираем случайного нового ревьювера, исключая автора PR
-	newReviewerIDs := s.selectRandomReviewers(availableCandidates, 1, pr.AuthorId)
+	// Выбираем случайного нового ревьювера
+	newReviewerIDs := s.selectRandomReviewers(availableCandidates, 1)
 	if len(newReviewerIDs) == 0 {
 		return nil, "", ErrNoCandidate
 	}
 	newUserID := newReviewerIDs[0]
 
 	// Переназначаем ревьювера
-	err = s.prRepo.ReassignReviewer(prID, oldUserID, newUserID)
+	updatedPR, err := s.prRepo.ReassignReviewer(prID, oldUserID, newUserID)
 	if err != nil {
-		if err == storage.ErrNotFound {
+		if errors.Is(err, storage.ErrNotFound) {
 			return nil, "", ErrNotAssigned
 		}
-		return nil, "", err
-	}
-
-	// Возвращаем обновленный PR и ID нового ревьювера
-	updatedPR, err := s.prRepo.GetPR(prID)
-	if err != nil {
-		return nil, "", err
+		return nil, "", MapStorageError(err)
 	}
 
 	return updatedPR, newUserID, nil
@@ -195,10 +181,7 @@ func (s *PRService) GetPRsByReviewer(userID string) ([]api.PullRequestShort, err
 	// Проверяем существование пользователя
 	_, err := s.userRepo.GetUser(userID)
 	if err != nil {
-		if err == storage.ErrNotFound {
-			return nil, ErrNotFound
-		}
-		return nil, err
+		return nil, MapStorageError(err)
 	}
 
 	// Получаем список PR
@@ -211,24 +194,15 @@ func (s *PRService) GetPRsByReviewer(userID string) ([]api.PullRequestShort, err
 }
 
 // selectRandomReviewers выбирает случайных ревьюверов из списка кандидатов (до maxCount)
-// Исключает из списка кандидатов автора PR
-func (s *PRService) selectRandomReviewers(candidates []api.User, maxCount int, excludeUserID string) []string {
-	// Фильтруем кандидатов, исключая автора PR
-	filteredCandidates := make([]api.User, 0)
-	for _, candidate := range candidates {
-		if candidate.UserId != excludeUserID {
-			filteredCandidates = append(filteredCandidates, candidate)
-		}
-	}
-
-	if len(filteredCandidates) == 0 {
+func (s *PRService) selectRandomReviewers(candidates []api.User, maxCount int) []string {
+	if len(candidates) == 0 {
 		return []string{}
 	}
 
 	// Если кандидатов меньше или равно maxCount, возвращаем всех
-	if len(filteredCandidates) <= maxCount {
-		result := make([]string, len(filteredCandidates))
-		for i, user := range filteredCandidates {
+	if len(candidates) <= maxCount {
+		result := make([]string, len(candidates))
+		for i, user := range candidates {
 			result[i] = user.UserId
 		}
 		return result
@@ -240,10 +214,10 @@ func (s *PRService) selectRandomReviewers(candidates []api.User, maxCount int, e
 	result := make([]string, 0, maxCount)
 
 	for len(result) < maxCount {
-		idx := rng.Intn(len(filteredCandidates))
+		idx := rng.Intn(len(candidates))
 		if !selected[idx] {
 			selected[idx] = true
-			result = append(result, filteredCandidates[idx].UserId)
+			result = append(result, candidates[idx].UserId)
 		}
 	}
 

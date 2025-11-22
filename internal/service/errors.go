@@ -1,7 +1,10 @@
 package service
 
 import (
+	"errors"
+
 	"pr-review-assigner/internal/api"
+	"pr-review-assigner/internal/storage"
 )
 
 // Типизированные ошибки для маппинга на API коды
@@ -36,4 +39,20 @@ func GetServiceError(err error) *ServiceError {
 		return se
 	}
 	return nil
+}
+
+// MapStorageError преобразует ошибки storage в ошибки service
+func MapStorageError(err error) error {
+	if err == nil {
+		return nil
+	}
+	
+	switch {
+	case errors.Is(err, storage.ErrNotFound):
+		return ErrNotFound
+	case errors.Is(err, storage.ErrDuplicateKey):
+		return ErrPRExists 
+	default:
+		return err
+	}
 }

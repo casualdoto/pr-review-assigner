@@ -21,8 +21,7 @@ func TestUserService_SetUserIsActive_Success(t *testing.T) {
 		IsActive: false,
 	}
 
-	mockUserRepo.On("UpdateUserIsActive", "u1", false).Return(nil)
-	mockUserRepo.On("GetUser", "u1").Return(expectedUser, nil)
+	mockUserRepo.On("UpdateUserIsActive", "u1", false).Return(expectedUser, nil)
 
 	result, err := service.SetUserIsActive("u1", false)
 
@@ -37,7 +36,7 @@ func TestUserService_SetUserIsActive_UserNotFound(t *testing.T) {
 
 	service := NewUserService(mockUserRepo)
 
-	mockUserRepo.On("UpdateUserIsActive", "u1", false).Return(storage.ErrNotFound)
+	mockUserRepo.On("UpdateUserIsActive", "u1", false).Return(nil, storage.ErrNotFound)
 
 	result, err := service.SetUserIsActive("u1", false)
 
@@ -47,18 +46,3 @@ func TestUserService_SetUserIsActive_UserNotFound(t *testing.T) {
 	mockUserRepo.AssertExpectations(t)
 }
 
-func TestUserService_SetUserIsActive_GetUserNotFound(t *testing.T) {
-	mockUserRepo := new(MockUserRepository)
-
-	service := NewUserService(mockUserRepo)
-
-	mockUserRepo.On("UpdateUserIsActive", "u1", true).Return(nil)
-	mockUserRepo.On("GetUser", "u1").Return(nil, storage.ErrNotFound)
-
-	result, err := service.SetUserIsActive("u1", true)
-
-	assert.Error(t, err)
-	assert.Nil(t, result)
-	assert.Equal(t, ErrNotFound, err)
-	mockUserRepo.AssertExpectations(t)
-}

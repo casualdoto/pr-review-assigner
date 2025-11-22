@@ -32,7 +32,6 @@ func TestTeamService_CreateOrUpdateTeam_Success(t *testing.T) {
 		},
 	}
 
-	mockTeamRepo.On("TeamExists", "backend").Return(false, nil)
 	mockTeamRepo.On("CreateTeam", "backend").Return(nil)
 	mockUserRepo.On("CreateOrUpdateUser", mock.AnythingOfType("*api.User")).Return(nil).Times(2)
 	mockTeamRepo.On("GetTeam", "backend").Return(expectedTeam, nil)
@@ -58,7 +57,7 @@ func TestTeamService_CreateOrUpdateTeam_TeamExists(t *testing.T) {
 		},
 	}
 
-	mockTeamRepo.On("TeamExists", "backend").Return(true, nil)
+	mockTeamRepo.On("CreateTeam", "backend").Return(storage.ErrDuplicateKey)
 
 	result, err := service.CreateOrUpdateTeam(team)
 

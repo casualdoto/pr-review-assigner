@@ -17,17 +17,15 @@ type TeamRepositoryInterface interface {
 type UserRepositoryInterface interface {
 	CreateOrUpdateUser(user *api.User) error
 	GetUser(userID string) (*api.User, error)
-	UpdateUserIsActive(userID string, isActive bool) error
+	UpdateUserIsActive(userID string, isActive bool) (*api.User, error)
 	GetActiveUsersByTeam(teamName string, excludeUserID string) ([]api.User, error)
 }
 
 // PRRepositoryInterface определяет интерфейс для работы с Pull Requests
 type PRRepositoryInterface interface {
-	CreatePR(pr *api.PullRequest) error
+	CreatePR(pr *api.PullRequest) (*api.PullRequest, error)
 	GetPR(prID string) (*api.PullRequest, error)
-	UpdatePRStatus(prID string, status api.PullRequestStatus, mergedAt *time.Time) error
+	UpdatePRStatus(prID string, status api.PullRequestStatus, mergedAt *time.Time) (*api.PullRequest, error)
 	GetPRsByReviewer(userID string) ([]api.PullRequestShort, error)
-	AssignReviewers(prID string, reviewerIDs []string) error
-	ReassignReviewer(prID string, oldUserID, newUserID string) error
-	GetReviewersByPR(prID string) ([]string, error)
+	ReassignReviewer(prID string, oldUserID, newUserID string) (*api.PullRequest, error)
 }

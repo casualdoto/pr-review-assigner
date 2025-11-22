@@ -42,8 +42,7 @@ func TestPRService_CreatePR_Success(t *testing.T) {
 	mockUserRepo.On("GetUser", "u1").Return(author, nil)
 	mockPRRepo.On("GetPR", "pr-1").Return(nil, storage.ErrNotFound).Once()
 	mockUserRepo.On("GetActiveUsersByTeam", "backend", "u1").Return(candidates, nil)
-	mockPRRepo.On("CreatePR", mock.AnythingOfType("*api.PullRequest")).Return(nil)
-	mockPRRepo.On("GetPR", "pr-1").Return(expectedPR, nil).Once()
+	mockPRRepo.On("CreatePR", mock.AnythingOfType("*api.PullRequest")).Return(expectedPR, nil)
 
 	result, err := service.CreatePR("pr-1", "Test PR", "u1")
 
@@ -123,8 +122,7 @@ func TestPRService_MergePR_Success(t *testing.T) {
 	}
 
 	mockPRRepo.On("GetPR", "pr-1").Return(pr, nil).Once()
-	mockPRRepo.On("UpdatePRStatus", "pr-1", api.PullRequestStatusMERGED, mock.AnythingOfType("*time.Time")).Return(nil)
-	mockPRRepo.On("GetPR", "pr-1").Return(mergedPR, nil)
+	mockPRRepo.On("UpdatePRStatus", "pr-1", api.PullRequestStatusMERGED, mock.AnythingOfType("*time.Time")).Return(mergedPR, nil)
 
 	result, err := service.MergePR("pr-1")
 
@@ -212,8 +210,7 @@ func TestPRService_ReassignReviewer_Success(t *testing.T) {
 	mockPRRepo.On("GetPR", "pr-1").Return(pr, nil).Once()
 	mockUserRepo.On("GetUser", "u2").Return(oldReviewer, nil)
 	mockUserRepo.On("GetActiveUsersByTeam", "backend", "u2").Return(candidates, nil)
-	mockPRRepo.On("ReassignReviewer", "pr-1", "u2", mock.AnythingOfType("string")).Return(nil)
-	mockPRRepo.On("GetPR", "pr-1").Return(updatedPR, nil)
+	mockPRRepo.On("ReassignReviewer", "pr-1", "u2", mock.AnythingOfType("string")).Return(updatedPR, nil)
 
 	result, newUserID, err := service.ReassignReviewer("pr-1", "u2")
 

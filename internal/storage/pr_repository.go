@@ -17,31 +17,52 @@ func NewPRRepository(repo *Repository) *PRRepository {
 	return &PRRepository{Repository: repo}
 }
 
-// CreatePR создает новый Pull Request
-func (r *PRRepository) CreatePR(pr *api.PullRequest) error {
+// CreatePR создает новый Pull Request и возвращает созданный PR
+func (r *PRRepository) CreatePR(pr *api.PullRequest) (*api.PullRequest, error) {
 	query := `
 		INSERT INTO pull_requests (pull_request_id, pull_request_name, author_id, status, created_at)
 		VALUES ($1, $2, $3, $4, $5)
+		RETURNING pull_request_id, pull_request_name, author_id, status, created_at, merged_at
 	`
 	createdAt := time.Now()
 	if pr.CreatedAt != nil {
 		createdAt = *pr.CreatedAt
 	}
-	
-	_, err := r.db.Exec(query, pr.PullRequestId, pr.PullRequestName, pr.AuthorId, string(pr.Status), createdAt)
+
+	var createdPR api.PullRequest
+	var createdAtTime, mergedAtTime sql.NullTime
+
+	err := r.db.QueryRow(query, pr.PullRequestId, pr.PullRequestName, pr.AuthorId, string(pr.Status), createdAt).Scan(
+		&createdPR.PullRequestId,
+		&createdPR.PullRequestName,
+		&createdPR.AuthorId,
+		&createdPR.Status,
+		&createdAtTime,
+		&mergedAtTime,
+	)
 	if err != nil {
-		return HandleDBError(err)
+		return nil, HandleDBError(err)
 	}
-	
+
+	if createdAtTime.Valid {
+		createdPR.CreatedAt = &createdAtTime.Time
+	}
+	if mergedAtTime.Valid {
+		createdPR.MergedAt = &mergedAtTime.Time
+	}
+
 	// Назначаем ревьюверов, если они указаны
 	if len(pr.AssignedReviewers) > 0 {
-		err = r.AssignReviewers(pr.PullRequestId, pr.AssignedReviewers)
+		err = r.assignReviewers(pr.PullRequestId, pr.AssignedReviewers)
 		if err != nil {
-			return HandleDBError(err)
+			return nil, HandleDBError(err)
 		}
+		createdPR.AssignedReviewers = pr.AssignedReviewers
+	} else {
+		createdPR.AssignedReviewers = []string{}
 	}
-	
-	return nil
+
+	return &createdPR, nil
 }
 
 // GetPR получает Pull Request по ID со всеми назначенными ревьюверами
@@ -53,7 +74,7 @@ func (r *PRRepository) GetPR(prID string) (*api.PullRequest, error) {
 	`
 	var pr api.PullRequest
 	var createdAt, mergedAt sql.NullTime
-	
+
 	err := r.db.QueryRow(query, prID).Scan(
 		&pr.PullRequestId,
 		&pr.PullRequestName,
@@ -65,50 +86,82 @@ func (r *PRRepository) GetPR(prID string) (*api.PullRequest, error) {
 	if err != nil {
 		return nil, HandleDBError(err)
 	}
-	
+
 	if createdAt.Valid {
 		pr.CreatedAt = &createdAt.Time
 	}
 	if mergedAt.Valid {
 		pr.MergedAt = &mergedAt.Time
 	}
-	
+
 	// Получаем назначенных ревьюверов
-	reviewers, err := r.GetReviewersByPR(prID)
+	reviewers, err := r.getReviewersByPR(prID)
 	if err != nil {
 		return nil, HandleDBError(err)
 	}
 	pr.AssignedReviewers = reviewers
-	
+
 	return &pr, nil
 }
 
-// UpdatePRStatus обновляет статус PR и устанавливает merged_at при необходимости
-func (r *PRRepository) UpdatePRStatus(prID string, status api.PullRequestStatus, mergedAt *time.Time) error {
+// UpdatePRStatus обновляет статус PR и возвращает обновленный PR
+func (r *PRRepository) UpdatePRStatus(prID string, status api.PullRequestStatus, mergedAt *time.Time) (*api.PullRequest, error) {
 	var query string
+	var pr api.PullRequest
+	var createdAtTime, mergedAtTime sql.NullTime
 	var err error
-	
+
 	if status == api.PullRequestStatusMERGED && mergedAt != nil {
 		query = `
 			UPDATE pull_requests
 			SET status = $1, merged_at = $2
 			WHERE pull_request_id = $3
+			RETURNING pull_request_id, pull_request_name, author_id, status, created_at, merged_at
 		`
-		_, err = r.db.Exec(query, string(status), mergedAt, prID)
+		err = r.db.QueryRow(query, string(status), mergedAt, prID).Scan(
+			&pr.PullRequestId,
+			&pr.PullRequestName,
+			&pr.AuthorId,
+			&pr.Status,
+			&createdAtTime,
+			&mergedAtTime,
+		)
 	} else {
 		query = `
 			UPDATE pull_requests
 			SET status = $1
 			WHERE pull_request_id = $2
+			RETURNING pull_request_id, pull_request_name, author_id, status, created_at, merged_at
 		`
-		_, err = r.db.Exec(query, string(status), prID)
+		err = r.db.QueryRow(query, string(status), prID).Scan(
+			&pr.PullRequestId,
+			&pr.PullRequestName,
+			&pr.AuthorId,
+			&pr.Status,
+			&createdAtTime,
+			&mergedAtTime,
+		)
 	}
-	
+
 	if err != nil {
-		return HandleDBError(err)
+		return nil, HandleDBError(err)
 	}
-	
-	return nil
+
+	if createdAtTime.Valid {
+		pr.CreatedAt = &createdAtTime.Time
+	}
+	if mergedAtTime.Valid {
+		pr.MergedAt = &mergedAtTime.Time
+	}
+
+	// Получаем назначенных ревьюверов
+	reviewers, err := r.getReviewersByPR(prID)
+	if err != nil {
+		return nil, HandleDBError(err)
+	}
+	pr.AssignedReviewers = reviewers
+
+	return &pr, nil
 }
 
 // GetPRsByReviewer получает список PR, где пользователь назначен ревьювером
@@ -148,71 +201,72 @@ func (r *PRRepository) GetPRsByReviewer(userID string) ([]api.PullRequestShort, 
 	return prs, nil
 }
 
-// AssignReviewers назначает ревьюверов на PR
-func (r *PRRepository) AssignReviewers(prID string, reviewerIDs []string) error {
+// assignReviewers назначает ревьюверов на PR
+func (r *PRRepository) assignReviewers(prID string, reviewerIDs []string) error {
 	if len(reviewerIDs) == 0 {
 		return nil
 	}
-	
+
 	query := `
 		INSERT INTO pr_reviewers (pull_request_id, user_id)
 		VALUES ($1, $2)
 		ON CONFLICT (pull_request_id, user_id) DO NOTHING
 	`
-	
+
 	for _, reviewerID := range reviewerIDs {
 		_, err := r.db.Exec(query, prID, reviewerID)
 		if err != nil {
 			return HandleDBError(err)
 		}
 	}
-	
+
 	return nil
 }
 
-// ReassignReviewer переназначает одного ревьювера на другого
-func (r *PRRepository) ReassignReviewer(prID string, oldUserID, newUserID string) error {
+// ReassignReviewer переназначает одного ревьювера на другого и возвращает обновленный PR
+func (r *PRRepository) ReassignReviewer(prID string, oldUserID, newUserID string) (*api.PullRequest, error) {
 	// Проверяем, что старый ревьювер назначен на этот PR
 	var exists bool
 	checkQuery := `SELECT EXISTS(SELECT 1 FROM pr_reviewers WHERE pull_request_id = $1 AND user_id = $2)`
 	err := r.db.QueryRow(checkQuery, prID, oldUserID).Scan(&exists)
 	if err != nil {
-		return HandleDBError(err)
+		return nil, HandleDBError(err)
 	}
 	if !exists {
-		return ErrNotFound
+		return nil, ErrNotFound
 	}
-	
+
 	// Удаляем старого ревьювера и добавляем нового в одной транзакции
 	tx, err := r.db.Begin()
 	if err != nil {
-		return HandleDBError(err)
+		return nil, HandleDBError(err)
 	}
 	defer tx.Rollback()
-	
+
 	// Удаляем старого ревьювера
 	deleteQuery := `DELETE FROM pr_reviewers WHERE pull_request_id = $1 AND user_id = $2`
 	_, err = tx.Exec(deleteQuery, prID, oldUserID)
 	if err != nil {
-		return HandleDBError(err)
+		return nil, HandleDBError(err)
 	}
-	
+
 	// Добавляем нового ревьювера
 	insertQuery := `INSERT INTO pr_reviewers (pull_request_id, user_id) VALUES ($1, $2)`
 	_, err = tx.Exec(insertQuery, prID, newUserID)
 	if err != nil {
-		return HandleDBError(err)
+		return nil, HandleDBError(err)
 	}
-	
+
 	if err = tx.Commit(); err != nil {
-		return HandleDBError(err)
+		return nil, HandleDBError(err)
 	}
-	
-	return nil
+
+	// Возвращаем обновленный PR
+	return r.GetPR(prID)
 }
 
-// GetReviewersByPR получает список ревьюверов для PR
-func (r *PRRepository) GetReviewersByPR(prID string) ([]string, error) {
+// getReviewersByPR получает список ревьюверов для PR
+func (r *PRRepository) getReviewersByPR(prID string) ([]string, error) {
 	query := `
 		SELECT user_id
 		FROM pr_reviewers
@@ -241,4 +295,3 @@ func (r *PRRepository) GetReviewersByPR(prID string) ([]string, error) {
 
 	return reviewers, nil
 }
-

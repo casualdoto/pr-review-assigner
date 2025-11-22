@@ -1,6 +1,8 @@
 package service
 
 import (
+	"errors"
+
 	"pr-review-assigner/internal/api"
 	"pr-review-assigner/internal/storage"
 )
@@ -23,23 +25,13 @@ func NewTeamService(teamRepo storage.TeamRepositoryInterface, userRepo storage.U
 // Если команда уже существует, возвращает ErrTeamExists
 // Создает/обновляет всех пользователей из списка участников
 func (s *TeamService) CreateOrUpdateTeam(team *api.Team) (*api.Team, error) {
-	// Проверяем существование команды
-	exists, err := s.teamRepo.TeamExists(team.TeamName)
-	if err != nil {
-		return nil, err
-	}
-
-	if exists {
-		return nil, ErrTeamExists
-	}
-
 	// Создаем команду
-	err = s.teamRepo.CreateTeam(team.TeamName)
+	err := s.teamRepo.CreateTeam(team.TeamName)
 	if err != nil {
-		if err == storage.ErrDuplicateKey {
+		if errors.Is(err, storage.ErrDuplicateKey) {
 			return nil, ErrTeamExists
 		}
-		return nil, err
+		return nil, MapStorageError(err)
 	}
 
 	// Создаем/обновляем всех участников команды
@@ -64,10 +56,7 @@ func (s *TeamService) CreateOrUpdateTeam(team *api.Team) (*api.Team, error) {
 func (s *TeamService) GetTeam(teamName string) (*api.Team, error) {
 	team, err := s.teamRepo.GetTeam(teamName)
 	if err != nil {
-		if err == storage.ErrNotFound {
-			return nil, ErrNotFound
-		}
-		return nil, err
+		return nil, MapStorageError(err)
 	}
 	return team, nil
 }

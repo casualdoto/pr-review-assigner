@@ -53,28 +53,26 @@ func (r *UserRepository) GetUser(userID string) (*api.User, error) {
 	return &user, nil
 }
 
-// UpdateUserIsActive обновляет флаг активности пользователя
-func (r *UserRepository) UpdateUserIsActive(userID string, isActive bool) error {
+// UpdateUserIsActive обновляет флаг активности пользователя и возвращает обновленного пользователя
+func (r *UserRepository) UpdateUserIsActive(userID string, isActive bool) (*api.User, error) {
 	query := `
 		UPDATE users
 		SET is_active = $1, updated_at = CURRENT_TIMESTAMP
 		WHERE user_id = $2
+		RETURNING user_id, username, team_name, is_active
 	`
-	result, err := r.db.Exec(query, isActive, userID)
+	var user api.User
+	err := r.db.QueryRow(query, isActive, userID).Scan(
+		&user.UserId,
+		&user.Username,
+		&user.TeamName,
+		&user.IsActive,
+	)
 	if err != nil {
-		return HandleDBError(err)
+		return nil, HandleDBError(err)
 	}
 	
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return HandleDBError(err)
-	}
-	
-	if rowsAffected == 0 {
-		return ErrNotFound
-	}
-	
-	return nil
+	return &user, nil
 }
 
 // GetActiveUsersByTeam получает список активных пользователей команды, исключая указанного пользователя

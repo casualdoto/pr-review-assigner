@@ -15,6 +15,16 @@ type Server struct {
 	prService   *service.PRService
 }
 
+// errorCodeToHTTPStatus маппинг кодов ошибок на HTTP статусы
+var errorCodeToHTTPStatus = map[api.ErrorResponseErrorCode]int{
+	api.TEAMEXISTS:  http.StatusBadRequest,
+	api.PRMERGED:    http.StatusConflict,
+	api.NOTASSIGNED: http.StatusConflict,
+	api.NOCANDIDATE: http.StatusConflict,
+	api.PREXISTS:    http.StatusConflict,
+	api.NOTFOUND:    http.StatusNotFound,
+}
+
 // NewServer создает новый экземпляр сервера
 func NewServer(teamService *service.TeamService, userService *service.UserService, prService *service.PRService) *Server {
 	return &Server{
@@ -22,6 +32,15 @@ func NewServer(teamService *service.TeamService, userService *service.UserServic
 		userService: userService,
 		prService:   prService,
 	}
+}
+
+// decodeJSON декодирует JSON из тела запроса
+func (s *Server) decodeJSON(w http.ResponseWriter, r *http.Request, v interface{}) bool {
+	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
+		s.writeError(w, http.StatusBadRequest, api.NOTFOUND, "invalid request body")
+		return false
+	}
+	return true
 }
 
 // writeJSON записывает JSON ответ
@@ -49,16 +68,11 @@ func (s *Server) writeError(w http.ResponseWriter, statusCode int, code api.Erro
 func (s *Server) handleServiceError(w http.ResponseWriter, err error) {
 	if service.IsServiceError(err) {
 		se := service.GetServiceError(err)
-		switch se.Code {
-		case api.TEAMEXISTS:
-			s.writeError(w, http.StatusBadRequest, se.Code, se.Message)
-		case api.PRMERGED, api.NOTASSIGNED, api.NOCANDIDATE, api.PREXISTS:
-			s.writeError(w, http.StatusConflict, se.Code, se.Message)
-		case api.NOTFOUND:
-			s.writeError(w, http.StatusNotFound, se.Code, se.Message)
-		default:
-			s.writeError(w, http.StatusInternalServerError, api.NOTFOUND, "internal server error")
+		statusCode, ok := errorCodeToHTTPStatus[se.Code]
+		if !ok {
+			statusCode = http.StatusInternalServerError
 		}
+		s.writeError(w, statusCode, se.Code, se.Message)
 		return
 	}
 	// Неизвестная ошибка
@@ -69,8 +83,7 @@ func (s *Server) handleServiceError(w http.ResponseWriter, err error) {
 // (POST /team/add)
 func (s *Server) PostTeamAdd(w http.ResponseWriter, r *http.Request) {
 	var team api.Team
-	if err := json.NewDecoder(r.Body).Decode(&team); err != nil {
-		s.writeError(w, http.StatusBadRequest, api.NOTFOUND, "invalid request body")
+	if !s.decodeJSON(w, r, &team) {
 		return
 	}
 
@@ -104,8 +117,7 @@ func (s *Server) GetTeamGet(w http.ResponseWriter, r *http.Request, params api.G
 // (POST /users/setIsActive)
 func (s *Server) PostUsersSetIsActive(w http.ResponseWriter, r *http.Request) {
 	var req api.PostUsersSetIsActiveJSONBody
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.writeError(w, http.StatusBadRequest, api.NOTFOUND, "invalid request body")
+	if !s.decodeJSON(w, r, &req) {
 		return
 	}
 
@@ -123,12 +135,11 @@ func (s *Server) PostUsersSetIsActive(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, response)
 }
 
-// PostPullRequestCreate создает PR и автоматически назначает до 2 ревьюверов из команды автора
+// PostPullRequestCreate создает PR и автоматически назначает до MaxReviewers ревьюверов из команды автора
 // (POST /pullRequest/create)
 func (s *Server) PostPullRequestCreate(w http.ResponseWriter, r *http.Request) {
 	var req api.PostPullRequestCreateJSONBody
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.writeError(w, http.StatusBadRequest, api.NOTFOUND, "invalid request body")
+	if !s.decodeJSON(w, r, &req) {
 		return
 	}
 
@@ -150,8 +161,7 @@ func (s *Server) PostPullRequestCreate(w http.ResponseWriter, r *http.Request) {
 // (POST /pullRequest/merge)
 func (s *Server) PostPullRequestMerge(w http.ResponseWriter, r *http.Request) {
 	var req api.PostPullRequestMergeJSONBody
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.writeError(w, http.StatusBadRequest, api.NOTFOUND, "invalid request body")
+	if !s.decodeJSON(w, r, &req) {
 		return
 	}
 
@@ -173,8 +183,7 @@ func (s *Server) PostPullRequestMerge(w http.ResponseWriter, r *http.Request) {
 // (POST /pullRequest/reassign)
 func (s *Server) PostPullRequestReassign(w http.ResponseWriter, r *http.Request) {
 	var req api.PostPullRequestReassignJSONBody
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.writeError(w, http.StatusBadRequest, api.NOTFOUND, "invalid request body")
+	if !s.decodeJSON(w, r, &req) {
 		return
 	}
 
