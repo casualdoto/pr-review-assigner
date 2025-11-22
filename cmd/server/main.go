@@ -46,7 +46,7 @@ func main() {
 
 	// Инициализация сервисов
 	teamService := service.NewTeamService(teamRepo, userRepo)
-	userService := service.NewUserService(userRepo)
+	userService := service.NewUserService(userRepo, prRepo, teamRepo)
 	prService := service.NewPRService(prRepo, userRepo, teamRepo)
 
 	// Инициализация handlers

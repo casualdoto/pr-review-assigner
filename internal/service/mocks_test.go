@@ -109,3 +109,8 @@ func (m *MockPRRepository) ReassignReviewer(prID string, oldUserID, newUserID st
 	}
 	return args.Get(0).(*api.PullRequest), args.Error(1)
 }
+
+func (m *MockPRRepository) AddReviewer(prID string, userID string) error {
+	args := m.Called(prID, userID)
+	return args.Error(0)
+}

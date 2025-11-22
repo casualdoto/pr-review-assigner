@@ -338,6 +338,59 @@ paths:
               example:
                 error: { code: PR_EXISTS, message: PR id already exists }
 
+  /pullRequest/assignReviewers:
+    post:
+      tags: [PullRequests]
+      summary: Автоматически назначить или дополнить ревьюверов для PR
+      description: |
+        Назначает ревьюверов автоматически из команды автора PR:
+        - Если уже назначено 2 ревьювера - ничего не делает
+        - Если назначен 1 ревьювер - добавляет второго
+        - Если нет ревьюверов - назначает до 2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ pull_request_id ]
+              properties:
+                pull_request_id: { type: string }
+            example:
+              pull_request_id: pr-1001
+      responses:
+        '200':
+          description: Ревьюверы назначены или дополнены
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pr:
+                    $ref: '#/components/schemas/PullRequest'
+              example:
+                pr:
+                  pull_request_id: pr-1001
+                  pull_request_name: Add search
+                  author_id: u1
+                  status: OPEN
+                  assigned_reviewers: [u2, u3]
+        '404':
+          description: PR или автор не найден
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: Нарушение доменных правил
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              examples:
+                merged:
+                  summary: Нельзя назначать ревьюверов для MERGED PR
+                  value:
+                    error: { code: PR_MERGED, message: cannot assign reviewers to merged PR }
+
   /pullRequest/merge:
     post:
       tags: [PullRequests]

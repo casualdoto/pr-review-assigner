@@ -28,4 +28,5 @@ type PRRepositoryInterface interface {
 	UpdatePRStatus(prID string, status api.PullRequestStatus, mergedAt *time.Time) (*api.PullRequest, error)
 	GetPRsByReviewer(userID string) ([]api.PullRequestShort, error)
 	ReassignReviewer(prID string, oldUserID, newUserID string) (*api.PullRequest, error)
+	AddReviewer(prID string, userID string) error
 }

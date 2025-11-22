@@ -179,6 +179,28 @@ func (s *Server) PostPullRequestCreate(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusCreated, response)
 }
 
+// PostPullRequestAssignReviewers автоматически назначает или дополняет ревьюверов для PR
+// (POST /pullRequest/assignReviewers)
+func (s *Server) PostPullRequestAssignReviewers(w http.ResponseWriter, r *http.Request) {
+	var req api.PostPullRequestAssignReviewersJSONBody
+	if !s.decodeJSON(w, r, &req) {
+		return
+	}
+
+	pr, err := s.prService.AutoAssignReviewers(req.PullRequestId)
+	if err != nil {
+		s.handleServiceError(w, err)
+		return
+	}
+
+	response := struct {
+		PR *api.PullRequest `json:"pr"`
+	}{
+		PR: pr,
+	}
+	s.writeJSON(w, http.StatusOK, response)
+}
+
 // PostPullRequestMerge помечает PR как MERGED (идемпотентная операция)
 // (POST /pullRequest/merge)
 func (s *Server) PostPullRequestMerge(w http.ResponseWriter, r *http.Request) {

@@ -316,3 +316,298 @@ func TestPRService_GetPRsByReviewer_UserNotFound(t *testing.T) {
 	assert.Equal(t, ErrNotFound, err)
 	mockUserRepo.AssertExpectations(t)
 }
+
+func TestPRService_ReassignReviewer_AuthorNotIncluded(t *testing.T) {
+	mockPRRepo := new(MockPRRepository)
+	mockUserRepo := new(MockUserRepository)
+	mockTeamRepo := new(MockTeamRepository)
+
+	service := NewPRService(mockPRRepo, mockUserRepo, mockTeamRepo)
+
+	// PR где автор u1, а ревьюверы u2 и u3
+	pr := &api.PullRequest{
+		PullRequestId:     "pr-1",
+		AuthorId:          "u1",
+		Status:            api.PullRequestStatusOPEN,
+		AssignedReviewers: []string{"u2", "u3"},
+	}
+
+	oldReviewer := &api.User{
+		UserId:   "u2",
+		Username: "Bob",
+		TeamName: "backend",
+		IsActive: true,
+	}
+
+	// Кандидаты включают автора u1, но он должен быть исключен
+	candidates := []api.User{
+		{UserId: "u1", Username: "Alice", TeamName: "backend", IsActive: true}, // Автор PR
+		{UserId: "u4", Username: "David", TeamName: "backend", IsActive: true},
+	}
+
+	updatedPR := &api.PullRequest{
+		PullRequestId:     "pr-1",
+		AuthorId:          "u1",
+		Status:            api.PullRequestStatusOPEN,
+		AssignedReviewers: []string{"u3", "u4"},
+	}
+
+	mockPRRepo.On("GetPR", "pr-1").Return(pr, nil).Once()
+	mockUserRepo.On("GetUser", "u2").Return(oldReviewer, nil)
+	mockUserRepo.On("GetActiveUsersByTeam", "backend", "u2").Return(candidates, nil)
+	// Должен быть назначен u4, а не автор u1
+	mockPRRepo.On("ReassignReviewer", "pr-1", "u2", "u4").Return(updatedPR, nil)
+
+	result, newUserID, err := service.ReassignReviewer("pr-1", "u2")
+
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.Equal(t, "u4", newUserID, "Новый ревьювер должен быть u4, а не автор PR")
+	assert.NotEqual(t, "u1", newUserID, "Автор PR не должен быть назначен ревьювером")
+	mockPRRepo.AssertExpectations(t)
+	mockUserRepo.AssertExpectations(t)
+}
+
+func TestPRService_ReassignReviewer_OnlyAuthorAvailable(t *testing.T) {
+	mockPRRepo := new(MockPRRepository)
+	mockUserRepo := new(MockUserRepository)
+	mockTeamRepo := new(MockTeamRepository)
+
+	service := NewPRService(mockPRRepo, mockUserRepo, mockTeamRepo)
+
+	// PR где автор u1, а ревьювер u2
+	pr := &api.PullRequest{
+		PullRequestId:     "pr-1",
+		AuthorId:          "u1",
+		Status:            api.PullRequestStatusOPEN,
+		AssignedReviewers: []string{"u2"},
+	}
+
+	oldReviewer := &api.User{
+		UserId:   "u2",
+		Username: "Bob",
+		TeamName: "backend",
+		IsActive: true,
+	}
+
+	// Единственный доступный кандидат - это автор PR
+	candidates := []api.User{
+		{UserId: "u1", Username: "Alice", TeamName: "backend", IsActive: true}, // Автор PR
+	}
+
+	updatedPR := &api.PullRequest{
+		PullRequestId:     "pr-1",
+		AuthorId:          "u1",
+		Status:            api.PullRequestStatusOPEN,
+		AssignedReviewers: []string{}, // Ревьювер удален, новый не назначен
+	}
+
+	mockPRRepo.On("GetPR", "pr-1").Return(pr, nil).Once()
+	mockUserRepo.On("GetUser", "u2").Return(oldReviewer, nil)
+	mockUserRepo.On("GetActiveUsersByTeam", "backend", "u2").Return(candidates, nil)
+	// Должен быть вызван с пустым newUserID (просто удаление)
+	mockPRRepo.On("ReassignReviewer", "pr-1", "u2", "").Return(updatedPR, nil)
+
+	result, newUserID, err := service.ReassignReviewer("pr-1", "u2")
+
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.Empty(t, newUserID, "Новый ревьювер не должен быть назначен, так как доступен только автор PR")
+	assert.Empty(t, result.AssignedReviewers, "PR должен остаться без ревьюверов")
+	mockPRRepo.AssertExpectations(t)
+	mockUserRepo.AssertExpectations(t)
+}
+
+func TestPRService_ReassignReviewer_NoCandidates(t *testing.T) {
+	mockPRRepo := new(MockPRRepository)
+	mockUserRepo := new(MockUserRepository)
+	mockTeamRepo := new(MockTeamRepository)
+
+	service := NewPRService(mockPRRepo, mockUserRepo, mockTeamRepo)
+
+	// PR где автор u1, а ревьюверы u2 и u3
+	pr := &api.PullRequest{
+		PullRequestId:     "pr-1",
+		AuthorId:          "u1",
+		Status:            api.PullRequestStatusOPEN,
+		AssignedReviewers: []string{"u2", "u3"},
+	}
+
+	oldReviewer := &api.User{
+		UserId:   "u2",
+		Username: "Bob",
+		TeamName: "backend",
+		IsActive: true,
+	}
+
+	// Кандидаты: автор u1 и уже назначенный u3 - оба должны быть исключены
+	candidates := []api.User{
+		{UserId: "u1", Username: "Alice", TeamName: "backend", IsActive: true},   // Автор PR
+		{UserId: "u3", Username: "Charlie", TeamName: "backend", IsActive: true}, // Уже назначен
+	}
+
+	updatedPR := &api.PullRequest{
+		PullRequestId:     "pr-1",
+		AuthorId:          "u1",
+		Status:            api.PullRequestStatusOPEN,
+		AssignedReviewers: []string{"u3"}, // Только u3 остался
+	}
+
+	mockPRRepo.On("GetPR", "pr-1").Return(pr, nil).Once()
+	mockUserRepo.On("GetUser", "u2").Return(oldReviewer, nil)
+	mockUserRepo.On("GetActiveUsersByTeam", "backend", "u2").Return(candidates, nil)
+	// Должен быть вызван с пустым newUserID (просто удаление u2)
+	mockPRRepo.On("ReassignReviewer", "pr-1", "u2", "").Return(updatedPR, nil)
+
+	result, newUserID, err := service.ReassignReviewer("pr-1", "u2")
+
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.Empty(t, newUserID, "Новый ревьювер не должен быть назначен")
+	assert.Len(t, result.AssignedReviewers, 1)
+	assert.Equal(t, "u3", result.AssignedReviewers[0])
+	mockPRRepo.AssertExpectations(t)
+	mockUserRepo.AssertExpectations(t)
+}
+
+func TestPRService_AutoAssignReviewers_AddTwo(t *testing.T) {
+	mockPRRepo := new(MockPRRepository)
+	mockUserRepo := new(MockUserRepository)
+	mockTeamRepo := new(MockTeamRepository)
+
+	service := NewPRService(mockPRRepo, mockUserRepo, mockTeamRepo)
+
+	// PR без ревьюверов
+	pr := &api.PullRequest{
+		PullRequestId:     "pr-1",
+		AuthorId:          "u1",
+		Status:            api.PullRequestStatusOPEN,
+		AssignedReviewers: []string{},
+	}
+
+	author := &api.User{
+		UserId:   "u1",
+		Username: "Alice",
+		TeamName: "backend",
+		IsActive: true,
+	}
+
+	candidates := []api.User{
+		{UserId: "u2", Username: "Bob", TeamName: "backend", IsActive: true},
+		{UserId: "u3", Username: "Charlie", TeamName: "backend", IsActive: true},
+	}
+
+	mockPRRepo.On("GetPR", "pr-1").Return(pr, nil).Once()
+	mockUserRepo.On("GetUser", "u1").Return(author, nil)
+	mockUserRepo.On("GetActiveUsersByTeam", "backend", "u1").Return(candidates, nil)
+	mockPRRepo.On("AddReviewer", "pr-1", mock.AnythingOfType("string")).Return(nil).Times(2)
+	mockPRRepo.On("GetPR", "pr-1").Return(pr, nil).Once()
+
+	result, err := service.AutoAssignReviewers("pr-1")
+
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+	mockPRRepo.AssertExpectations(t)
+	mockUserRepo.AssertExpectations(t)
+}
+
+func TestPRService_AutoAssignReviewers_AddOne(t *testing.T) {
+	mockPRRepo := new(MockPRRepository)
+	mockUserRepo := new(MockUserRepository)
+	mockTeamRepo := new(MockTeamRepository)
+
+	service := NewPRService(mockPRRepo, mockUserRepo, mockTeamRepo)
+
+	// PR с одним ревьювером
+	pr := &api.PullRequest{
+		PullRequestId:     "pr-1",
+		AuthorId:          "u1",
+		Status:            api.PullRequestStatusOPEN,
+		AssignedReviewers: []string{"u2"},
+	}
+
+	author := &api.User{
+		UserId:   "u1",
+		Username: "Alice",
+		TeamName: "backend",
+		IsActive: true,
+	}
+
+	candidates := []api.User{
+		{UserId: "u2", Username: "Bob", TeamName: "backend", IsActive: true},
+		{UserId: "u3", Username: "Charlie", TeamName: "backend", IsActive: true},
+	}
+
+	updatedPR := &api.PullRequest{
+		PullRequestId:     "pr-1",
+		AuthorId:          "u1",
+		Status:            api.PullRequestStatusOPEN,
+		AssignedReviewers: []string{"u2", "u3"},
+	}
+
+	mockPRRepo.On("GetPR", "pr-1").Return(pr, nil).Once()
+	mockUserRepo.On("GetUser", "u1").Return(author, nil)
+	mockUserRepo.On("GetActiveUsersByTeam", "backend", "u1").Return(candidates, nil)
+	mockPRRepo.On("AddReviewer", "pr-1", "u3").Return(nil)
+	mockPRRepo.On("GetPR", "pr-1").Return(updatedPR, nil).Once()
+
+	result, err := service.AutoAssignReviewers("pr-1")
+
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.Len(t, result.AssignedReviewers, 2)
+	mockPRRepo.AssertExpectations(t)
+	mockUserRepo.AssertExpectations(t)
+}
+
+func TestPRService_AutoAssignReviewers_AlreadyFull(t *testing.T) {
+	mockPRRepo := new(MockPRRepository)
+	mockUserRepo := new(MockUserRepository)
+	mockTeamRepo := new(MockTeamRepository)
+
+	service := NewPRService(mockPRRepo, mockUserRepo, mockTeamRepo)
+
+	// PR с двумя ревьюверами
+	pr := &api.PullRequest{
+		PullRequestId:     "pr-1",
+		AuthorId:          "u1",
+		Status:            api.PullRequestStatusOPEN,
+		AssignedReviewers: []string{"u2", "u3"},
+	}
+
+	mockPRRepo.On("GetPR", "pr-1").Return(pr, nil).Once()
+
+	result, err := service.AutoAssignReviewers("pr-1")
+
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.Len(t, result.AssignedReviewers, 2)
+	mockPRRepo.AssertExpectations(t)
+	mockUserRepo.AssertNotCalled(t, "GetUser")
+	mockPRRepo.AssertNotCalled(t, "AddReviewer")
+}
+
+func TestPRService_AutoAssignReviewers_PRMerged(t *testing.T) {
+	mockPRRepo := new(MockPRRepository)
+	mockUserRepo := new(MockUserRepository)
+	mockTeamRepo := new(MockTeamRepository)
+
+	service := NewPRService(mockPRRepo, mockUserRepo, mockTeamRepo)
+
+	// Merged PR
+	pr := &api.PullRequest{
+		PullRequestId:     "pr-1",
+		AuthorId:          "u1",
+		Status:            api.PullRequestStatusMERGED,
+		AssignedReviewers: []string{},
+	}
+
+	mockPRRepo.On("GetPR", "pr-1").Return(pr, nil)
+
+	result, err := service.AutoAssignReviewers("pr-1")
+
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Equal(t, ErrPRMerged, err)
+	mockPRRepo.AssertExpectations(t)
+}

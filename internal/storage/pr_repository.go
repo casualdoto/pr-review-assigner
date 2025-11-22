@@ -224,6 +224,7 @@ func (r *PRRepository) assignReviewers(prID string, reviewerIDs []string) error 
 }
 
 // ReassignReviewer переназначает одного ревьювера на другого и возвращает обновленный PR
+// Если newUserID пустой, то просто удаляет старого ревьювера без назначения нового
 func (r *PRRepository) ReassignReviewer(prID string, oldUserID, newUserID string) (*api.PullRequest, error) {
 	// Проверяем, что старый ревьювер назначен на этот PR
 	var exists bool
@@ -250,11 +251,13 @@ func (r *PRRepository) ReassignReviewer(prID string, oldUserID, newUserID string
 		return nil, HandleDBError(err)
 	}
 
-	// Добавляем нового ревьювера
-	insertQuery := `INSERT INTO pr_reviewers (pull_request_id, user_id) VALUES ($1, $2)`
-	_, err = tx.Exec(insertQuery, prID, newUserID)
-	if err != nil {
-		return nil, HandleDBError(err)
+	// Добавляем нового ревьювера, если он указан
+	if newUserID != "" {
+		insertQuery := `INSERT INTO pr_reviewers (pull_request_id, user_id) VALUES ($1, $2)`
+		_, err = tx.Exec(insertQuery, prID, newUserID)
+		if err != nil {
+			return nil, HandleDBError(err)
+		}
 	}
 
 	if err = tx.Commit(); err != nil {
@@ -263,6 +266,20 @@ func (r *PRRepository) ReassignReviewer(prID string, oldUserID, newUserID string
 
 	// Возвращаем обновленный PR
 	return r.GetPR(prID)
+}
+
+// AddReviewer добавляет ревьювера к PR
+func (r *PRRepository) AddReviewer(prID string, userID string) error {
+	query := `
+		INSERT INTO pr_reviewers (pull_request_id, user_id)
+		VALUES ($1, $2)
+		ON CONFLICT (pull_request_id, user_id) DO NOTHING
+	`
+	_, err := r.db.Exec(query, prID, userID)
+	if err != nil {
+		return HandleDBError(err)
+	}
+	return nil
 }
 
 // getReviewersByPR получает список ревьюверов для PR

@@ -133,14 +133,16 @@ func (s *PRService) ReassignReviewer(prID, oldUserID string) (*api.PullRequest, 
 		return nil, "", MapStorageError(err)
 	}
 
-	// Получаем активных пользователей команды заменяемого ревьювера (исключая его самого и уже назначенных ревьюверов)
+	// Получаем активных пользователей команды заменяемого ревьювера (исключая его самого)
 	candidates, err := s.userRepo.GetActiveUsersByTeam(oldReviewer.TeamName, oldUserID)
 	if err != nil {
 		return nil, "", err
 	}
 
-	// Исключаем уже назначенных ревьюверов из кандидатов
+	// Исключаем автора PR и уже назначенных ревьюверов из кандидатов
 	assignedMap := make(map[string]bool)
+	assignedMap[pr.AuthorId] = true // Автор PR не может быть ревьювером - исключаем в первую очередь
+
 	for _, reviewerID := range pr.AssignedReviewers {
 		assignedMap[reviewerID] = true
 	}
@@ -152,19 +154,18 @@ func (s *PRService) ReassignReviewer(prID, oldUserID string) (*api.PullRequest, 
 		}
 	}
 
-	// Проверяем наличие доступных кандидатов
-	if len(availableCandidates) == 0 {
-		return nil, "", ErrNoCandidate
+	// Определяем нового ревьювера
+	var newUserID string
+	if len(availableCandidates) > 0 {
+		// Есть доступные кандидаты - выбираем случайного
+		newReviewerIDs := s.selectRandomReviewers(availableCandidates, 1)
+		if len(newReviewerIDs) > 0 {
+			newUserID = newReviewerIDs[0]
+		}
 	}
+	// Если newUserID пустой, просто удалим старого ревьювера без замены
 
-	// Выбираем случайного нового ревьювера
-	newReviewerIDs := s.selectRandomReviewers(availableCandidates, 1)
-	if len(newReviewerIDs) == 0 {
-		return nil, "", ErrNoCandidate
-	}
-	newUserID := newReviewerIDs[0]
-
-	// Переназначаем ревьювера
+	// Переназначаем ревьювера (или удаляем, если newUserID пустой)
 	updatedPR, err := s.prRepo.ReassignReviewer(prID, oldUserID, newUserID)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
@@ -191,6 +192,78 @@ func (s *PRService) GetPRsByReviewer(userID string) ([]api.PullRequestShort, err
 	}
 
 	return prs, nil
+}
+
+// AutoAssignReviewers автоматически назначает или дополняет ревьюверов для PR
+// Если уже 2 ревьювера - ничего не делает
+// Если 1 ревьювер - добавляет второго
+// Если 0 ревьюверов - назначает до 2
+func (s *PRService) AutoAssignReviewers(prID string) (*api.PullRequest, error) {
+	// Получаем PR
+	pr, err := s.prRepo.GetPR(prID)
+	if err != nil {
+		return nil, MapStorageError(err)
+	}
+
+	// Проверяем, что PR не MERGED
+	if pr.Status == api.PullRequestStatusMERGED {
+		return nil, ErrPRMerged
+	}
+
+	// Если уже назначено максимальное количество ревьюверов, возвращаем PR без изменений
+	if len(pr.AssignedReviewers) >= MaxReviewers {
+		return pr, nil
+	}
+
+	// Получаем автора PR
+	author, err := s.userRepo.GetUser(pr.AuthorId)
+	if err != nil {
+		return nil, MapStorageError(err)
+	}
+
+	// Получаем активных пользователей команды автора (исключая самого автора)
+	candidates, err := s.userRepo.GetActiveUsersByTeam(author.TeamName, pr.AuthorId)
+	if err != nil {
+		return nil, err
+	}
+
+	// Исключаем уже назначенных ревьюверов
+	assignedMap := make(map[string]bool)
+	for _, reviewerID := range pr.AssignedReviewers {
+		assignedMap[reviewerID] = true
+	}
+
+	availableCandidates := make([]api.User, 0)
+	for _, candidate := range candidates {
+		if !assignedMap[candidate.UserId] {
+			availableCandidates = append(availableCandidates, candidate)
+		}
+	}
+
+	// Определяем сколько ревьюверов нужно добавить
+	needReviewers := MaxReviewers - len(pr.AssignedReviewers)
+	if needReviewers <= 0 {
+		return pr, nil
+	}
+
+	// Выбираем случайных ревьюверов
+	newReviewerIDs := s.selectRandomReviewers(availableCandidates, needReviewers)
+
+	// Если нет доступных кандидатов, возвращаем PR без изменений
+	if len(newReviewerIDs) == 0 {
+		return pr, nil
+	}
+
+	// Добавляем новых ревьюверов
+	for _, reviewerID := range newReviewerIDs {
+		err = s.prRepo.AddReviewer(prID, reviewerID)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Возвращаем обновленный PR
+	return s.prRepo.GetPR(prID)
 }
 
 // selectRandomReviewers выбирает случайных ревьюверов из списка кандидатов (до maxCount)

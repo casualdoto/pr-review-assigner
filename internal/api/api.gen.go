@@ -98,6 +98,11 @@ type TeamNameQuery = string
 // UserIdQuery defines model for UserIdQuery.
 type UserIdQuery = string
 
+// PostPullRequestAssignReviewersJSONBody defines parameters for PostPullRequestAssignReviewers.
+type PostPullRequestAssignReviewersJSONBody struct {
+	PullRequestId string `json:"pull_request_id"`
+}
+
 // PostPullRequestCreateJSONBody defines parameters for PostPullRequestCreate.
 type PostPullRequestCreateJSONBody struct {
 	AuthorId        string `json:"author_id"`
@@ -134,6 +139,9 @@ type PostUsersSetIsActiveJSONBody struct {
 	UserId   string `json:"user_id"`
 }
 
+// PostPullRequestAssignReviewersJSONRequestBody defines body for PostPullRequestAssignReviewers for application/json ContentType.
+type PostPullRequestAssignReviewersJSONRequestBody PostPullRequestAssignReviewersJSONBody
+
 // PostPullRequestCreateJSONRequestBody defines body for PostPullRequestCreate for application/json ContentType.
 type PostPullRequestCreateJSONRequestBody PostPullRequestCreateJSONBody
 
@@ -154,6 +162,9 @@ type PostUsersSetIsActiveJSONRequestBody PostUsersSetIsActiveJSONBody
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// Автоматически назначить или дополнить ревьюверов для PR
+	// (POST /pullRequest/assignReviewers)
+	PostPullRequestAssignReviewers(w http.ResponseWriter, r *http.Request)
 	// Создать PR и автоматически назначить до 2 ревьюверов из команды автора
 	// (POST /pullRequest/create)
 	PostPullRequestCreate(w http.ResponseWriter, r *http.Request)
@@ -183,6 +194,12 @@ type ServerInterface interface {
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
+
+// Автоматически назначить или дополнить ревьюверов для PR
+// (POST /pullRequest/assignReviewers)
+func (_ Unimplemented) PostPullRequestAssignReviewers(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
 
 // Создать PR и автоматически назначить до 2 ревьюверов из команды автора
 // (POST /pullRequest/create)
@@ -240,6 +257,20 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// PostPullRequestAssignReviewers operation middleware
+func (siw *ServerInterfaceWrapper) PostPullRequestAssignReviewers(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostPullRequestAssignReviewers(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // PostPullRequestCreate operation middleware
 func (siw *ServerInterfaceWrapper) PostPullRequestCreate(w http.ResponseWriter, r *http.Request) {
@@ -506,6 +537,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/pullRequest/assignReviewers", wrapper.PostPullRequestAssignReviewers)
+	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/pullRequest/create", wrapper.PostPullRequestCreate)
 	})
