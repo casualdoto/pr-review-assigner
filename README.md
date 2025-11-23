@@ -1,5 +1,156 @@
 # PR Reviewer Assignment Service
 
+Микросервис для автоматического назначения ревьюеров на Pull Request'ы с управлением командами и участниками.
+
+## Быстрый старт
+
+### С использованием Make
+
+```bash
+# 1. Собрать Docker образы
+make build
+
+# 2. Запустить все сервисы
+make up
+
+# 3. Проверить статус
+make ps
+```
+
+### Запуск без Make
+
+```powershell
+# 1. Собрать Docker образы
+docker-compose build
+
+# 2. Запустить все сервисы
+docker-compose up -d
+
+# 3. Проверить статус
+docker-compose ps
+```
+
+После успешного запуска сервис будет доступен:
+- **API**: http://localhost:8080
+- **Swagger UI**: http://localhost:8081
+- **PostgreSQL**: localhost:5432
+
+## Доступные команды Makefile
+
+| Команда | Описание |
+|---------|----------|
+| `make help` | Показать справку по всем доступным командам |
+| `make build` | Собрать Docker образы |
+| `make up` | Запустить все сервисы (БД, миграции, приложение, Swagger UI) |
+| `make down` | Остановить все сервисы |
+| `make restart` | Перезапустить сервисы |
+| `make logs` | Показать логи приложения (с отслеживанием новых) |
+| `make logs-all` | Показать логи всех сервисов |
+| `make test` | Запустить unit-тесты локально |
+| `make clean` | Полная очистка (контейнеры, образы, volumes) |
+| `make migrate-up` | Применить миграции вручную |
+| `make migrate-down` | Откатить последнюю миграцию |
+| `make ps` | Показать статус контейнеров |
+
+### Примеры использования
+
+```bash
+# Посмотреть логи приложения в реальном времени
+make logs
+
+# Пересобрать и перезапустить после изменений
+make build && make restart
+
+# Полная очистка и новый запуск
+make clean && make build && make up
+
+# Запуск тестов локально (требуется установленный Go)
+make test
+```
+
+## Тестирование API
+
+### Через Swagger UI (рекомендуется)
+
+1. Откройте http://localhost:8081 в браузере
+2. Выберите сервер `http://localhost:8080`
+3. Используйте интерактивный интерфейс для выполнения запросов
+
+### Через curl
+
+**Создание пользователя:**
+```powershell
+curl -X POST http://localhost:8080/user/add `
+  -H "Content-Type: application/json" `
+  -d '{\"user_id\": \"user1\", \"username\": \"Alice\", \"isActive\": true}'
+```
+
+**Создание команды:**
+```powershell
+curl -X POST http://localhost:8080/team/add `
+  -H "Content-Type: application/json" `
+  -d '{\"team_name\": \"backend\", \"members\": [{\"user_id\": \"user1\", \"username\": \"Alice\", \"isActive\": true}]}'
+```
+
+**Создание PR:**
+```powershell
+curl -X POST http://localhost:8080/pullRequest/add `
+  -H "Content-Type: application/json" `
+  -d '{\"pr_id\": \"pr1\", \"title\": \"Feature X\", \"author_id\": \"user1\"}'
+```
+
+**Получение статистики:**
+```powershell
+curl http://localhost:8080/statistics
+```
+
+## Архитектура
+
+### Структура проекта
+```
+pr-review-assigner/
+├── cmd/server/          # Точка входа приложения
+├── internal/
+│   ├── api/            # Генерированный код из OpenAPI
+│   ├── config/         # Конфигурация приложения
+│   ├── handler/        # HTTP обработчики
+│   ├── service/        # Бизнес-логика
+│   └── storage/        # Работа с БД
+├── migrations/         # Миграции базы данных
+├── docs/              # OpenAPI спецификация
+├── docker-compose.yml # Конфигурация Docker Compose
+├── Dockerfile         # Сборка приложения
+└── Makefile          # Команды для управления проектом
+```
+
+### Технологический стек
+- **Язык**: Go 1.25
+- **База данных**: PostgreSQL 15
+- **Миграции**: golang-migrate
+- **API документация**: OpenAPI 3.0 + Swagger UI
+- **Контейнеризация**: Docker + Docker Compose
+
+## Остановка и очистка
+
+```bash
+# Остановить сервисы
+make down
+
+# Полная очистка (удаление контейнеров, образов, volumes)
+make clean
+```
+
+Без Make:
+```powershell
+# Остановить сервисы
+docker-compose down
+
+# Полная очистка
+docker-compose down -v --rmi all --remove-orphans
+```
+
+---
+
 ## Вопросы и архитектурные решения
 
 ### 1. Эндпоинт для автоматического назначения ревьюверов после создания PR
