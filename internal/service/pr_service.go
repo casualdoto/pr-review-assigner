@@ -140,19 +140,8 @@ func (s *PRService) ReassignReviewer(prID, oldUserID string) (*api.PullRequest, 
 	}
 
 	// Исключаем автора PR и уже назначенных ревьюверов из кандидатов
-	assignedMap := make(map[string]bool)
-	assignedMap[pr.AuthorId] = true // Автор PR не может быть ревьювером - исключаем в первую очередь
-
-	for _, reviewerID := range pr.AssignedReviewers {
-		assignedMap[reviewerID] = true
-	}
-
-	availableCandidates := make([]api.User, 0)
-	for _, candidate := range candidates {
-		if !assignedMap[candidate.UserId] {
-			availableCandidates = append(availableCandidates, candidate)
-		}
-	}
+	excludeUserIDs := append([]string{pr.AuthorId}, pr.AssignedReviewers...)
+	availableCandidates := filterCandidates(candidates, excludeUserIDs...)
 
 	// Определяем нового ревьювера
 	var newUserID string
@@ -228,17 +217,7 @@ func (s *PRService) AutoAssignReviewers(prID string) (*api.PullRequest, error) {
 	}
 
 	// Исключаем уже назначенных ревьюверов
-	assignedMap := make(map[string]bool)
-	for _, reviewerID := range pr.AssignedReviewers {
-		assignedMap[reviewerID] = true
-	}
-
-	availableCandidates := make([]api.User, 0)
-	for _, candidate := range candidates {
-		if !assignedMap[candidate.UserId] {
-			availableCandidates = append(availableCandidates, candidate)
-		}
-	}
+	availableCandidates := filterCandidates(candidates, pr.AssignedReviewers...)
 
 	// Определяем сколько ревьюверов нужно добавить
 	needReviewers := MaxReviewers - len(pr.AssignedReviewers)
@@ -264,6 +243,29 @@ func (s *PRService) AutoAssignReviewers(prID string) (*api.PullRequest, error) {
 
 	// Возвращаем обновленный PR
 	return s.prRepo.GetPR(prID)
+}
+
+// filterCandidates фильтрует кандидатов, исключая указанных пользователей
+func filterCandidates(candidates []api.User, excludeUserIDs ...string) []api.User {
+	if len(candidates) == 0 {
+		return []api.User{}
+	}
+
+	// Создаем карту исключений для быстрого поиска
+	excludeMap := make(map[string]bool, len(excludeUserIDs))
+	for _, userID := range excludeUserIDs {
+		excludeMap[userID] = true
+	}
+
+	// Фильтруем кандидатов
+	filtered := make([]api.User, 0, len(candidates))
+	for _, candidate := range candidates {
+		if !excludeMap[candidate.UserId] {
+			filtered = append(filtered, candidate)
+		}
+	}
+
+	return filtered
 }
 
 // selectRandomReviewers выбирает случайных ревьюверов из списка кандидатов (до maxCount)

@@ -15,6 +15,44 @@ type Server struct {
 	prService   *service.PRService
 }
 
+// Типизированные структуры ответов для устранения дублирования
+type teamResponse struct {
+	Team *api.Team `json:"team"`
+}
+
+type userResponse struct {
+	User *api.User `json:"user"`
+}
+
+type prResponse struct {
+	PR *api.PullRequest `json:"pr"`
+}
+
+type reassignResponse struct {
+	PR         *api.PullRequest `json:"pr"`
+	ReplacedBy string           `json:"replaced_by"`
+}
+
+type userReviewResponse struct {
+	UserId       string                 `json:"user_id"`
+	PullRequests []api.PullRequestShort `json:"pull_requests"`
+}
+
+type deactivateUsersResponse struct {
+	DeactivatedUsers   []api.User `json:"deactivated_users"`
+	ReassignedPrsCount int        `json:"reassigned_prs_count"`
+}
+
+type reviewerStat struct {
+	UserId           string `json:"user_id"`
+	Username         string `json:"username"`
+	AssignmentsCount int    `json:"assignments_count"`
+}
+
+type statisticsResponse struct {
+	Statistics []reviewerStat `json:"statistics"`
+}
+
 // errorCodeToHTTPStatus маппинг кодов ошибок на HTTP статусы
 var errorCodeToHTTPStatus = map[api.ErrorResponseErrorCode]int{
 	api.TEAMEXISTS:  http.StatusBadRequest,
@@ -92,12 +130,7 @@ func (s *Server) PostTeamAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := struct {
-		Team *api.Team `json:"team"`
-	}{
-		Team: result,
-	}
-	s.writeJSON(w, http.StatusCreated, response)
+	s.writeJSON(w, http.StatusCreated, teamResponse{Team: result})
 }
 
 // PostTeamUpdate добавляет или обновляет участников существующей команды
@@ -114,12 +147,7 @@ func (s *Server) PostTeamUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := struct {
-		Team *api.Team `json:"team"`
-	}{
-		Team: result,
-	}
-	s.writeJSON(w, http.StatusOK, response)
+	s.writeJSON(w, http.StatusOK, teamResponse{Team: result})
 }
 
 // GetTeamGet получает команду с участниками
@@ -148,14 +176,10 @@ func (s *Server) PostTeamDeactivateUsers(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	response := struct {
-		DeactivatedUsers   []api.User `json:"deactivated_users"`
-		ReassignedPrsCount int        `json:"reassigned_prs_count"`
-	}{
+	s.writeJSON(w, http.StatusOK, deactivateUsersResponse{
 		DeactivatedUsers:   deactivatedUsers,
 		ReassignedPrsCount: reassignedCount,
-	}
-	s.writeJSON(w, http.StatusOK, response)
+	})
 }
 
 // PostUsersSetIsActive устанавливает флаг активности пользователя
@@ -172,12 +196,7 @@ func (s *Server) PostUsersSetIsActive(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := struct {
-		User *api.User `json:"user"`
-	}{
-		User: user,
-	}
-	s.writeJSON(w, http.StatusOK, response)
+	s.writeJSON(w, http.StatusOK, userResponse{User: user})
 }
 
 // PostPullRequestCreate создает PR и автоматически назначает до MaxReviewers ревьюверов из команды автора
@@ -194,12 +213,7 @@ func (s *Server) PostPullRequestCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := struct {
-		PR *api.PullRequest `json:"pr"`
-	}{
-		PR: pr,
-	}
-	s.writeJSON(w, http.StatusCreated, response)
+	s.writeJSON(w, http.StatusCreated, prResponse{PR: pr})
 }
 
 // PostPullRequestAssignReviewers автоматически назначает или дополняет ревьюверов для PR
@@ -216,12 +230,7 @@ func (s *Server) PostPullRequestAssignReviewers(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	response := struct {
-		PR *api.PullRequest `json:"pr"`
-	}{
-		PR: pr,
-	}
-	s.writeJSON(w, http.StatusOK, response)
+	s.writeJSON(w, http.StatusOK, prResponse{PR: pr})
 }
 
 // PostPullRequestMerge помечает PR как MERGED (идемпотентная операция)
@@ -238,12 +247,7 @@ func (s *Server) PostPullRequestMerge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := struct {
-		PR *api.PullRequest `json:"pr"`
-	}{
-		PR: pr,
-	}
-	s.writeJSON(w, http.StatusOK, response)
+	s.writeJSON(w, http.StatusOK, prResponse{PR: pr})
 }
 
 // PostPullRequestReassign переназначает конкретного ревьювера на другого из его команды
@@ -260,14 +264,10 @@ func (s *Server) PostPullRequestReassign(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	response := struct {
-		PR         *api.PullRequest `json:"pr"`
-		ReplacedBy string           `json:"replaced_by"`
-	}{
+	s.writeJSON(w, http.StatusOK, reassignResponse{
 		PR:         pr,
 		ReplacedBy: newUserID,
-	}
-	s.writeJSON(w, http.StatusOK, response)
+	})
 }
 
 // GetUsersGetReview получает PR'ы, где пользователь назначен ревьювером
@@ -279,14 +279,10 @@ func (s *Server) GetUsersGetReview(w http.ResponseWriter, r *http.Request, param
 		return
 	}
 
-	response := struct {
-		UserId       string                 `json:"user_id"`
-		PullRequests []api.PullRequestShort `json:"pull_requests"`
-	}{
+	s.writeJSON(w, http.StatusOK, userReviewResponse{
 		UserId:       params.UserId,
 		PullRequests: prs,
-	}
-	s.writeJSON(w, http.StatusOK, response)
+	})
 }
 
 // GetStatistics получает статистику назначений ревьюверов
@@ -299,25 +295,14 @@ func (s *Server) GetStatistics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Преобразуем в нужный формат для ответа
-	type ReviewerStat struct {
-		UserId           string `json:"user_id"`
-		Username         string `json:"username"`
-		AssignmentsCount int    `json:"assignments_count"`
-	}
-
-	stats := make([]ReviewerStat, len(statistics))
+	stats := make([]reviewerStat, len(statistics))
 	for i, stat := range statistics {
-		stats[i] = ReviewerStat{
+		stats[i] = reviewerStat{
 			UserId:           stat.UserID,
 			Username:         stat.Username,
 			AssignmentsCount: stat.AssignmentsCount,
 		}
 	}
 
-	response := struct {
-		Statistics []ReviewerStat `json:"statistics"`
-	}{
-		Statistics: stats,
-	}
-	s.writeJSON(w, http.StatusOK, response)
+	s.writeJSON(w, http.StatusOK, statisticsResponse{Statistics: stats})
 }

@@ -47,12 +47,9 @@ func MapStorageError(err error) error {
 		return nil
 	}
 	
-	switch {
-	case errors.Is(err, storage.ErrNotFound):
+	if errors.Is(err, storage.ErrNotFound) {
 		return ErrNotFound
-	case errors.Is(err, storage.ErrDuplicateKey):
-		return ErrPRExists 
-	default:
-		return err
 	}
+	
+	return err
 }

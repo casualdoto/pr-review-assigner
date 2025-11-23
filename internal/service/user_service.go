@@ -71,22 +71,19 @@ func (s *UserService) reassignUserPRs(userID string, teamName string) error {
 			continue
 		}
 
-		// Исключаем автора и уже назначенных ревьюверов
-		assignedMap := make(map[string]bool)
+		// Исключаем автора и уже назначенных ревьюверов (кроме деактивируемого)
+		excludeUserIDs := []string{pr.AuthorId}
 		for _, reviewerID := range pr.AssignedReviewers {
 			if reviewerID != userID {
-				assignedMap[reviewerID] = true
+				excludeUserIDs = append(excludeUserIDs, reviewerID)
 			}
 		}
-		assignedMap[pr.AuthorId] = true
+		availableCandidates := filterCandidates(candidates, excludeUserIDs...)
 
 		// Ищем доступного кандидата
 		var newReviewerID string
-		for _, candidate := range candidates {
-			if !assignedMap[candidate.UserId] {
-				newReviewerID = candidate.UserId
-				break
-			}
+		if len(availableCandidates) > 0 {
+			newReviewerID = availableCandidates[0].UserId
 		}
 
 		// Если нет доступных кандидатов, просто удаляем ревьювера
