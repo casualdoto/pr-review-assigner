@@ -265,3 +265,36 @@ func (s *Server) GetUsersGetReview(w http.ResponseWriter, r *http.Request, param
 	}
 	s.writeJSON(w, http.StatusOK, response)
 }
+
+// GetStatistics получает статистику назначений ревьюверов
+// (GET /statistics)
+func (s *Server) GetStatistics(w http.ResponseWriter, r *http.Request) {
+	statistics, err := s.prService.GetReviewerStatistics()
+	if err != nil {
+		s.handleServiceError(w, err)
+		return
+	}
+
+	// Преобразуем в нужный формат для ответа
+	type ReviewerStat struct {
+		UserId           string `json:"user_id"`
+		Username         string `json:"username"`
+		AssignmentsCount int    `json:"assignments_count"`
+	}
+
+	stats := make([]ReviewerStat, len(statistics))
+	for i, stat := range statistics {
+		stats[i] = ReviewerStat{
+			UserId:           stat.UserID,
+			Username:         stat.Username,
+			AssignmentsCount: stat.AssignmentsCount,
+		}
+	}
+
+	response := struct {
+		Statistics []ReviewerStat `json:"statistics"`
+	}{
+		Statistics: stats,
+	}
+	s.writeJSON(w, http.StatusOK, response)
+}

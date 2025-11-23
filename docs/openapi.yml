@@ -11,6 +11,7 @@ tags:
   - name: Teams
   - name: Users
   - name: PullRequests
+  - name: Statistics
   - name: Health
 
 components:
@@ -124,6 +125,19 @@ components:
         status:
           type: string
           enum: [OPEN, MERGED]
+    ReviewerStatistics:
+      type: object
+      required: [ user_id, username, assignments_count ]
+      properties:
+        user_id:
+          type: string
+          description: Идентификатор пользователя
+        username:
+          type: string
+          description: Имя пользователя
+        assignments_count:
+          type: integer
+          description: Количество назначений на ревью
 
 paths:
   /team/add:
@@ -521,3 +535,30 @@ paths:
                     pull_request_name: Add search
                     author_id: u1
                     status: OPEN
+
+  /statistics:
+    get:
+      tags: [Statistics]
+      summary: Получить статистику назначений ревьюверов
+      description: Возвращает количество назначений на ревью для каждого пользователя
+      responses:
+        '200':
+          description: Статистика по назначениям
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ statistics ]
+                properties:
+                  statistics:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ReviewerStatistics'
+              example:
+                statistics:
+                  - user_id: u1
+                    username: Alice
+                    assignments_count: 15
+                  - user_id: u2
+                    username: Bob
+                    assignments_count: 12

@@ -71,6 +71,18 @@ type PullRequestShort struct {
 // PullRequestShortStatus defines model for PullRequestShort.Status.
 type PullRequestShortStatus string
 
+// ReviewerStatistics defines model for ReviewerStatistics.
+type ReviewerStatistics struct {
+	// AssignmentsCount Количество назначений на ревью
+	AssignmentsCount int `json:"assignments_count"`
+
+	// UserId Идентификатор пользователя
+	UserId string `json:"user_id"`
+
+	// Username Имя пользователя
+	Username string `json:"username"`
+}
+
 // Team defines model for Team.
 type Team struct {
 	Members  []TeamMember `json:"members"`
@@ -174,6 +186,9 @@ type ServerInterface interface {
 	// Переназначить конкретного ревьювера на другого из его команды
 	// (POST /pullRequest/reassign)
 	PostPullRequestReassign(w http.ResponseWriter, r *http.Request)
+	// Получить статистику назначений ревьюверов
+	// (GET /statistics)
+	GetStatistics(w http.ResponseWriter, r *http.Request)
 	// Создать новую команду с участниками
 	// (POST /team/add)
 	PostTeamAdd(w http.ResponseWriter, r *http.Request)
@@ -216,6 +231,12 @@ func (_ Unimplemented) PostPullRequestMerge(w http.ResponseWriter, r *http.Reque
 // Переназначить конкретного ревьювера на другого из его команды
 // (POST /pullRequest/reassign)
 func (_ Unimplemented) PostPullRequestReassign(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Получить статистику назначений ревьюверов
+// (GET /statistics)
+func (_ Unimplemented) GetStatistics(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -305,6 +326,20 @@ func (siw *ServerInterfaceWrapper) PostPullRequestReassign(w http.ResponseWriter
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostPullRequestReassign(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetStatistics operation middleware
+func (siw *ServerInterfaceWrapper) GetStatistics(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStatistics(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -548,6 +583,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/pullRequest/reassign", wrapper.PostPullRequestReassign)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/statistics", wrapper.GetStatistics)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/team/add", wrapper.PostTeamAdd)

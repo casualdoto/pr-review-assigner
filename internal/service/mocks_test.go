@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"pr-review-assigner/internal/api"
+	"pr-review-assigner/internal/storage"
 
 	"github.com/stretchr/testify/mock"
 )
@@ -113,4 +114,12 @@ func (m *MockPRRepository) ReassignReviewer(prID string, oldUserID, newUserID st
 func (m *MockPRRepository) AddReviewer(prID string, userID string) error {
 	args := m.Called(prID, userID)
 	return args.Error(0)
+}
+
+func (m *MockPRRepository) GetReviewerStatistics() ([]storage.ReviewerStatistic, error) {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]storage.ReviewerStatistic), args.Error(1)
 }

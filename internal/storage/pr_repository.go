@@ -312,3 +312,35 @@ func (r *PRRepository) getReviewersByPR(prID string) ([]string, error) {
 
 	return reviewers, nil
 }
+
+// GetReviewerStatistics получает статистику по назначениям ревьюверов
+func (r *PRRepository) GetReviewerStatistics() ([]ReviewerStatistic, error) {
+	query := `
+		SELECT u.user_id, u.username, COUNT(pr.pull_request_id) as assignments_count
+		FROM users u
+		LEFT JOIN pr_reviewers pr ON u.user_id = pr.user_id
+		GROUP BY u.user_id, u.username
+		ORDER BY assignments_count DESC, u.username
+	`
+	rows, err := r.db.Query(query)
+	if err != nil {
+		return nil, HandleDBError(err)
+	}
+	defer rows.Close()
+
+	var statistics []ReviewerStatistic
+	for rows.Next() {
+		var stat ReviewerStatistic
+		err := rows.Scan(&stat.UserID, &stat.Username, &stat.AssignmentsCount)
+		if err != nil {
+			return nil, HandleDBError(err)
+		}
+		statistics = append(statistics, stat)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, HandleDBError(err)
+	}
+
+	return statistics, nil
+}

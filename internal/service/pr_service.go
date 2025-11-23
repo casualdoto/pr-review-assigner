@@ -296,3 +296,13 @@ func (s *PRService) selectRandomReviewers(candidates []api.User, maxCount int) [
 
 	return result
 }
+
+// GetReviewerStatistics получает статистику по назначениям ревьюверов
+func (s *PRService) GetReviewerStatistics() ([]storage.ReviewerStatistic, error) {
+	statistics, err := s.prRepo.GetReviewerStatistics()
+	if err != nil {
+		return nil, err
+	}
+
+	return statistics, nil
+}

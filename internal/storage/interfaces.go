@@ -21,6 +21,13 @@ type UserRepositoryInterface interface {
 	GetActiveUsersByTeam(teamName string, excludeUserID string) ([]api.User, error)
 }
 
+// ReviewerStatistic представляет статистику по ревьюверу
+type ReviewerStatistic struct {
+	UserID           string
+	Username         string
+	AssignmentsCount int
+}
+
 // PRRepositoryInterface определяет интерфейс для работы с Pull Requests
 type PRRepositoryInterface interface {
 	CreatePR(pr *api.PullRequest) (*api.PullRequest, error)
@@ -29,4 +36,5 @@ type PRRepositoryInterface interface {
 	GetPRsByReviewer(userID string) ([]api.PullRequestShort, error)
 	ReassignReviewer(prID string, oldUserID, newUserID string) (*api.PullRequest, error)
 	AddReviewer(prID string, userID string) error
+	GetReviewerStatistics() ([]ReviewerStatistic, error)
 }
