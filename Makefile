@@ -5,10 +5,6 @@ DOCKER_COMPOSE = docker-compose
 APP_CONTAINER = pr-review-assigner-app
 DB_CONTAINER = pr-review-assigner-db
 
-# Colors for output
-GREEN = \033[0;32m
-NC = \033[0m # No Color
-
 ## help: Show help for all available commands
 help:
 	@echo "Available commands:"
@@ -26,20 +22,20 @@ help:
 
 ## build: Build Docker images
 build:
-	@echo "$(GREEN)Building Docker images...$(NC)"
+	@echo "Building Docker images..."
 	$(DOCKER_COMPOSE) build
 
 ## up: Start all services (DB, migrations, app, Swagger UI)
 up:
-	@echo "$(GREEN)Starting services...$(NC)"
+	@echo "Starting services..."
 	$(DOCKER_COMPOSE) up -d
-	@echo "$(GREEN)Services started!$(NC)"
+	@echo "Services started!"
 	@echo "API available at: http://localhost:8080"
 	@echo "Swagger UI available at: http://localhost:8081"
 
 ## down: Stop all services
 down:
-	@echo "$(GREEN)Stopping services...$(NC)"
+	@echo "Stopping services..."
 	$(DOCKER_COMPOSE) down
 
 ## restart: Restart services
@@ -55,25 +51,25 @@ logs-all:
 
 ## test: Run unit tests locally
 test:
-	@echo "$(GREEN)Running unit tests...$(NC)"
+	@echo "Running unit tests..."
 	go test ./internal/service/... -v -race -coverprofile=coverage.out
-	@echo "$(GREEN)Code coverage:$(NC)"
+	@echo "Code coverage:"
 	go tool cover -func=coverage.out | grep total
 
 ## clean: Full cleanup (containers, images, volumes)
 clean:
-	@echo "$(GREEN)Full cleanup...$(NC)"
+	@echo "Full cleanup..."
 	$(DOCKER_COMPOSE) down -v --rmi all --remove-orphans
-	@echo "$(GREEN)Cleanup completed$(NC)"
+	@echo "Cleanup completed"
 
 ## migrate-up: Apply migrations manually
 migrate-up:
-	@echo "$(GREEN)Applying migrations...$(NC)"
+	@echo "Applying migrations..."
 	$(DOCKER_COMPOSE) run --rm migrate -path=/migrations -database=postgres://pr_reviewer:pr_reviewer_pass@postgres:5432/pr_review_assigner?sslmode=disable up
 
 ## migrate-down: Rollback last migration
 migrate-down:
-	@echo "$(GREEN)Rolling back migration...$(NC)"
+	@echo "Rolling back migration..."
 	$(DOCKER_COMPOSE) run --rm migrate -path=/migrations -database=postgres://pr_reviewer:pr_reviewer_pass@postgres:5432/pr_review_assigner?sslmode=disable down 1
 
 ## ps: Show container status
