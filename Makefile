@@ -2,8 +2,8 @@
 
 # Variables
 DOCKER_COMPOSE = docker-compose
-APP_CONTAINER = pr-review-assigner-app
-DB_CONTAINER = pr-review-assigner-db
+APP_SERVICE = app
+DB_SERVICE = postgres
 
 ## help: Show help for all available commands
 help:
@@ -43,7 +43,7 @@ restart: down up
 
 ## logs: Show application logs (follow new logs)
 logs:
-	$(DOCKER_COMPOSE) logs -f $(APP_CONTAINER)
+	$(DOCKER_COMPOSE) logs -f $(APP_SERVICE)
 
 ## logs-all: Show logs from all services
 logs-all:
@@ -52,9 +52,9 @@ logs-all:
 ## test: Run unit tests locally
 test:
 	@echo "Running unit tests..."
-	go test ./internal/service/... -v -race -coverprofile=coverage.out
+	go test ./internal/service/... -v -coverprofile=coverage.out
 	@echo "Code coverage:"
-	go tool cover -func=coverage.out | grep total
+	go tool cover -func=coverage.out | findstr total
 
 ## clean: Full cleanup (containers, images, volumes)
 clean:
