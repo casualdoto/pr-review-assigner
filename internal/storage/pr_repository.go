@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"pr-review-assigner/internal/api"
+
+	"github.com/lib/pq"
 )
 
 // PRRepository предоставляет методы для работы с Pull Requests
@@ -343,4 +345,106 @@ func (r *PRRepository) GetReviewerStatistics() ([]ReviewerStatistic, error) {
 	}
 
 	return statistics, nil
+}
+
+// GetOpenPRsByReviewers получает все открытые PR, где указанные пользователи являются ревьюверами
+func (r *PRRepository) GetOpenPRsByReviewers(userIDs []string) ([]api.PullRequest, error) {
+	if len(userIDs) == 0 {
+		return []api.PullRequest{}, nil
+	}
+
+	query := `
+		SELECT DISTINCT pr.pull_request_id, pr.pull_request_name, pr.author_id, pr.status, pr.created_at, pr.merged_at
+		FROM pull_requests pr
+		INNER JOIN pr_reviewers prr ON pr.pull_request_id = prr.pull_request_id
+		WHERE prr.user_id = ANY($1) AND pr.status = 'OPEN'
+		ORDER BY pr.created_at
+	`
+	rows, err := r.db.Query(query, pq.Array(userIDs))
+	if err != nil {
+		return nil, HandleDBError(err)
+	}
+	defer rows.Close()
+
+	var prs []api.PullRequest
+	for rows.Next() {
+		var pr api.PullRequest
+		var createdAt, mergedAt sql.NullTime
+
+		err := rows.Scan(
+			&pr.PullRequestId,
+			&pr.PullRequestName,
+			&pr.AuthorId,
+			&pr.Status,
+			&createdAt,
+			&mergedAt,
+		)
+		if err != nil {
+			return nil, HandleDBError(err)
+		}
+
+		if createdAt.Valid {
+			pr.CreatedAt = &createdAt.Time
+		}
+		if mergedAt.Valid {
+			pr.MergedAt = &mergedAt.Time
+		}
+
+		// Получаем ревьюверов для каждого PR
+		reviewers, err := r.getReviewersByPR(pr.PullRequestId)
+		if err != nil {
+			return nil, HandleDBError(err)
+		}
+		pr.AssignedReviewers = reviewers
+
+		prs = append(prs, pr)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, HandleDBError(err)
+	}
+
+	return prs, nil
+}
+
+// BatchReassignReviewers массово переназначает ревьюверов в одной транзакции
+// reassignments - карта: prID -> {oldUserID -> newUserID}
+// Если newUserID пустой, ревьювер просто удаляется
+func (r *PRRepository) BatchReassignReviewers(reassignments map[string]map[string]string) error {
+	if len(reassignments) == 0 {
+		return nil
+	}
+
+	tx, err := r.db.Begin()
+	if err != nil {
+		return HandleDBError(err)
+	}
+	defer tx.Rollback()
+
+	deleteQuery := `DELETE FROM pr_reviewers WHERE pull_request_id = $1 AND user_id = $2`
+	insertQuery := `INSERT INTO pr_reviewers (pull_request_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`
+
+	for prID, changes := range reassignments {
+		for oldUserID, newUserID := range changes {
+			// Удаляем старого ревьювера
+			_, err = tx.Exec(deleteQuery, prID, oldUserID)
+			if err != nil {
+				return HandleDBError(err)
+			}
+
+			// Добавляем нового ревьювера, если он указан
+			if newUserID != "" {
+				_, err = tx.Exec(insertQuery, prID, newUserID)
+				if err != nil {
+					return HandleDBError(err)
+				}
+			}
+		}
+	}
+
+	if err = tx.Commit(); err != nil {
+		return HandleDBError(err)
+	}
+
+	return nil
 }

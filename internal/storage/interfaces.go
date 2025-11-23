@@ -19,6 +19,8 @@ type UserRepositoryInterface interface {
 	GetUser(userID string) (*api.User, error)
 	UpdateUserIsActive(userID string, isActive bool) (*api.User, error)
 	GetActiveUsersByTeam(teamName string, excludeUserID string) ([]api.User, error)
+	BatchDeactivateUsers(userIDs []string) ([]api.User, error)
+	GetUsersByTeam(teamName string) ([]api.User, error)
 }
 
 // ReviewerStatistic представляет статистику по ревьюверу
@@ -37,4 +39,6 @@ type PRRepositoryInterface interface {
 	ReassignReviewer(prID string, oldUserID, newUserID string) (*api.PullRequest, error)
 	AddReviewer(prID string, userID string) error
 	GetReviewerStatistics() ([]ReviewerStatistic, error)
+	GetOpenPRsByReviewers(userIDs []string) ([]api.PullRequest, error)
+	BatchReassignReviewers(reassignments map[string]map[string]string) error
 }

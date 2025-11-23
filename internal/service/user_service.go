@@ -111,3 +111,116 @@ func (s *UserService) reassignUserPRs(userID string, teamName string) error {
 
 	return nil
 }
+
+// DeactivateTeamUsers массово деактивирует пользователей команды и переназначает их открытые PR
+func (s *UserService) DeactivateTeamUsers(teamName string, userIDs []string) ([]api.User, int, error) {
+	if len(userIDs) == 0 {
+		return []api.User{}, 0, nil
+	}
+
+	// Проверяем существование команды
+	_, err := s.teamRepo.GetTeam(teamName)
+	if err != nil {
+		return nil, 0, MapStorageError(err)
+	}
+
+	// Получаем всех пользователей команды для валидации
+	teamUsers, err := s.userRepo.GetUsersByTeam(teamName)
+	if err != nil {
+		return nil, 0, MapStorageError(err)
+	}
+
+	// Создаем карту пользователей команды
+	teamUserMap := make(map[string]bool)
+	for _, user := range teamUsers {
+		teamUserMap[user.UserId] = true
+	}
+
+	// Валидируем, что все userIDs принадлежат команде
+	for _, userID := range userIDs {
+		if !teamUserMap[userID] {
+			return nil, 0, ErrNotFound
+		}
+	}
+
+	// Получаем всех активных пользователей команды (для кандидатов на переназначение)
+	// Исключаем тех, кого собираемся деактивировать
+	deactivatingMap := make(map[string]bool)
+	for _, userID := range userIDs {
+		deactivatingMap[userID] = true
+	}
+
+	var activeCandidates []api.User
+	for _, user := range teamUsers {
+		if user.IsActive && !deactivatingMap[user.UserId] {
+			activeCandidates = append(activeCandidates, user)
+		}
+	}
+
+	// Получаем все открытые PR деактивируемых пользователей одним запросом
+	openPRs, err := s.prRepo.GetOpenPRsByReviewers(userIDs)
+	if err != nil {
+		return nil, 0, MapStorageError(err)
+	}
+
+	// Подготавливаем план переназначений в памяти
+	reassignments := make(map[string]map[string]string) // prID -> {oldUserID -> newUserID}
+	reassignedCount := 0
+
+	for _, pr := range openPRs {
+		// Создаем карту уже назначенных ревьюверов на этот PR
+		assignedMap := make(map[string]bool)
+		assignedMap[pr.AuthorId] = true // Автор не может быть ревьювером
+		for _, reviewerID := range pr.AssignedReviewers {
+			if !deactivatingMap[reviewerID] {
+				// Ревьювер остается, добавляем в карту
+				assignedMap[reviewerID] = true
+			}
+		}
+
+		// Для каждого деактивируемого ревьювера в этом PR
+		for _, reviewerID := range pr.AssignedReviewers {
+			if deactivatingMap[reviewerID] {
+				// Ищем кандидата на замену
+				var newReviewerID string
+				for _, candidate := range activeCandidates {
+					if !assignedMap[candidate.UserId] {
+						newReviewerID = candidate.UserId
+						assignedMap[candidate.UserId] = true // Помечаем как назначенного
+						break
+					}
+				}
+
+				// Добавляем в план переназначений (даже если newReviewerID пустой - тогда просто удалим)
+				if reassignments[pr.PullRequestId] == nil {
+					reassignments[pr.PullRequestId] = make(map[string]string)
+				}
+				reassignments[pr.PullRequestId][reviewerID] = newReviewerID
+				reassignedCount++
+
+				if newReviewerID == "" {
+					log.Printf("Warning: no available candidates for PR %s, will remove reviewer %s", pr.PullRequestId, reviewerID)
+				}
+			}
+		}
+	}
+
+	// Выполняем массовую деактивацию и переназначение
+	deactivatedUsers, err := s.userRepo.BatchDeactivateUsers(userIDs)
+	if err != nil {
+		return nil, 0, MapStorageError(err)
+	}
+
+	// Выполняем массовое переназначение PR
+	if len(reassignments) > 0 {
+		err = s.prRepo.BatchReassignReviewers(reassignments)
+		if err != nil {
+			log.Printf("Warning: failed to batch reassign PRs: %v", err)
+			// Не возвращаем ошибку, так как пользователи уже деактивированы
+		}
+	}
+
+	log.Printf("Successfully deactivated %d users and reassigned %d PR assignments", len(deactivatedUsers), reassignedCount)
+
+	return deactivatedUsers, reassignedCount, nil
+}

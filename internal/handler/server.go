@@ -75,8 +75,7 @@ func (s *Server) handleServiceError(w http.ResponseWriter, err error) {
 		s.writeError(w, statusCode, se.Code, se.Message)
 		return
 	}
-	// Неизвестная ошибка
-	s.writeError(w, http.StatusInternalServerError, api.NOTFOUND, "internal server error")
+	s.writeError(w, http.StatusInternalServerError, api.NOTFOUND, err.Error())
 }
 
 // PostTeamAdd создает команду с участниками
@@ -133,6 +132,30 @@ func (s *Server) GetTeamGet(w http.ResponseWriter, r *http.Request, params api.G
 	}
 
 	s.writeJSON(w, http.StatusOK, team)
+}
+
+// PostTeamDeactivateUsers массово деактивирует пользователей команды с автоматическим переназначением PR
+// (POST /team/deactivateUsers)
+func (s *Server) PostTeamDeactivateUsers(w http.ResponseWriter, r *http.Request) {
+	var req api.PostTeamDeactivateUsersJSONBody
+	if !s.decodeJSON(w, r, &req) {
+		return
+	}
+
+	deactivatedUsers, reassignedCount, err := s.userService.DeactivateTeamUsers(req.TeamName, req.UserIds)
+	if err != nil {
+		s.handleServiceError(w, err)
+		return
+	}
+
+	response := struct {
+		DeactivatedUsers   []api.User `json:"deactivated_users"`
+		ReassignedPrsCount int        `json:"reassigned_prs_count"`
+	}{
+		DeactivatedUsers:   deactivatedUsers,
+		ReassignedPrsCount: reassignedCount,
+	}
+	s.writeJSON(w, http.StatusOK, response)
 }
 
 // PostUsersSetIsActive устанавливает флаг активности пользователя

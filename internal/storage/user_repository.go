@@ -2,6 +2,8 @@ package storage
 
 import (
 	"pr-review-assigner/internal/api"
+
+	"github.com/lib/pq"
 )
 
 // UserRepository предоставляет методы для работы с пользователями
@@ -84,6 +86,82 @@ func (r *UserRepository) GetActiveUsersByTeam(teamName string, excludeUserID str
 		ORDER BY user_id
 	`
 	rows, err := r.db.Query(query, teamName, excludeUserID)
+	if err != nil {
+		return nil, HandleDBError(err)
+	}
+	defer rows.Close()
+
+	var users []api.User
+	for rows.Next() {
+		var user api.User
+		err := rows.Scan(
+			&user.UserId,
+			&user.Username,
+			&user.TeamName,
+			&user.IsActive,
+		)
+		if err != nil {
+			return nil, HandleDBError(err)
+		}
+		users = append(users, user)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, HandleDBError(err)
+	}
+
+	return users, nil
+}
+
+// BatchDeactivateUsers массово деактивирует указанных пользователей
+func (r *UserRepository) BatchDeactivateUsers(userIDs []string) ([]api.User, error) {
+	if len(userIDs) == 0 {
+		return []api.User{}, nil
+	}
+
+	query := `
+		UPDATE users
+		SET is_active = false, updated_at = CURRENT_TIMESTAMP
+		WHERE user_id = ANY($1)
+		RETURNING user_id, username, team_name, is_active
+	`
+	rows, err := r.db.Query(query, pq.Array(userIDs))
+	if err != nil {
+		return nil, HandleDBError(err)
+	}
+	defer rows.Close()
+
+	var users []api.User
+	for rows.Next() {
+		var user api.User
+		err := rows.Scan(
+			&user.UserId,
+			&user.Username,
+			&user.TeamName,
+			&user.IsActive,
+		)
+		if err != nil {
+			return nil, HandleDBError(err)
+		}
+		users = append(users, user)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, HandleDBError(err)
+	}
+
+	return users, nil
+}
+
+// GetUsersByTeam получает всех пользователей команды (включая неактивных)
+func (r *UserRepository) GetUsersByTeam(teamName string) ([]api.User, error) {
+	query := `
+		SELECT user_id, username, team_name, is_active
+		FROM users
+		WHERE team_name = $1
+		ORDER BY user_id
+	`
+	rows, err := r.db.Query(query, teamName)
 	if err != nil {
 		return nil, HandleDBError(err)
 	}

@@ -66,6 +66,22 @@ func (m *MockUserRepository) GetActiveUsersByTeam(teamName string, excludeUserID
 	return args.Get(0).([]api.User), args.Error(1)
 }
 
+func (m *MockUserRepository) BatchDeactivateUsers(userIDs []string) ([]api.User, error) {
+	args := m.Called(userIDs)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]api.User), args.Error(1)
+}
+
+func (m *MockUserRepository) GetUsersByTeam(teamName string) ([]api.User, error) {
+	args := m.Called(teamName)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]api.User), args.Error(1)
+}
+
 // MockPRRepository - мок для PRRepository
 type MockPRRepository struct {
 	mock.Mock
@@ -122,4 +138,17 @@ func (m *MockPRRepository) GetReviewerStatistics() ([]storage.ReviewerStatistic,
 		return nil, args.Error(1)
 	}
 	return args.Get(0).([]storage.ReviewerStatistic), args.Error(1)
+}
+
+func (m *MockPRRepository) GetOpenPRsByReviewers(userIDs []string) ([]api.PullRequest, error) {
+	args := m.Called(userIDs)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]api.PullRequest), args.Error(1)
+}
+
+func (m *MockPRRepository) BatchReassignReviewers(reassignments map[string]map[string]string) error {
+	args := m.Called(reassignments)
+	return args.Error(0)
 }
